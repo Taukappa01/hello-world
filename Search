@@ -1,0 +1,2154 @@
+/*********************************************************************************
+* Utility Class: ProductSearch
+* Created by Mohan Kumar (Sales Optimizer), 01/02/2012
+----------------------------------------------------------------------------------
+* Purpose/Methods:
+* - Search the products based on the filter criteria provided by the user.
+* - Products searched can be added to Opportunity or Case.
+----------------------------------------------------------------------------------
+* Unit Test: TestProductSearchController
+----------------------------------------------------------------------------------
+* History:
+* - VERSION  DEVELOPER NAME        DATE            DETAIL FEATURES
+    1.0      Mohan Kumar           01/02/2012      INITIAL DEVELOPMENT
+    2.0      Mohan Kumar (TCS)     04/23/2014      updated the submit logic and open the case page as subtab
+    3.0      Mohan Kumar (TCS)     06/20/2014      Bug 366 fix: updated the special condition to not be applied if record type 
+                                                   select is partner products
+    4.0      Wonderly              06/23/2014      CRM Requests #10003 Add Spec Quality Field for AFP Opps
+                                                   #10066 Add Date_Installed__c to Display Merchandise on Account
+    5.0      Yogesh R                   Globalization                                              
+    6.0      Mohan                         10/24/2014   Show UOM column for Opportunity product sceen as UOM Globalization project
+    7.0      Jason Cooke (CloudSherpas)    5/12/2015    Added changes for Live Agent Case Product subtab
+    8.0      Jason Cooke (CloudSherpas)    5/12/2015    Added Country filter for SE Asia & India products
+*********************************************************************************/
+
+public with sharing class ProductSearch {
+    public List<LineItem> lineItemList {get;set;}   //contains the line item list that will be added to Opportunity/Case
+    public Opportunity opportunity {get;set;}
+    public OpportunityLineItem olineItem {get;set;}
+    public List<Selectoption> categoryOptions {get;set;}
+    public String categorySelected {get;set;}
+    public List<Selectoption> priceBookOptions {get;set;}
+    public String priceBookSelected {get;set;}
+    public List<Selectoption> businessUnitOptions {get;set;}
+    public String businessUnitSelected {get;set;}
+    public List<Selectoption> recordTypeOptions {get;set;}
+    public String recordTypeSelected {get;set;}
+    public List<Selectoption> priceGroupOptions {get;set;}
+    //public String priceGroupSelected {get;set;}
+    public String keyword {get;set;}
+    public Boolean isCommercial {get;set;}
+    public Boolean isResidential {get;set;}
+    public Boolean showRecordType {get;set;}
+    public Boolean showCommRes {get;set;}
+    public Boolean showPriceGroup {get;set;}
+    public Boolean showBusinessUnitPicklist {get;set;}
+    public Boolean disableRecordType {get;set;}
+    public Boolean disableCommRes {get;set;}
+    public Boolean disableCategory {get;set;}
+    public Boolean disablePriceGroup {get;set;}
+    public Boolean showSecHeader {get;set;}
+    public String productTitle {get;set;}
+    public String headerTitle {get;set;}
+    public Boolean disableAddProduct {get;set;}
+    public Boolean isQueryValid {get;set;}
+    public Boolean showPrice {get;set;}
+    public Boolean showQty {get;set;}
+    public Boolean showPiclist {get;set;}
+    public Boolean showPriceBook {get;set;}
+    public Boolean showLine {get;set;}
+    public Boolean showUom_Quality {get;set;}
+    public Boolean showOLI_UOM {get;set;}
+    public Boolean isMetro {get;set;}
+    public Boolean isPriceException {get;set;}
+    public Boolean isPartnerJob {get;set;}
+    public String peRowIndex {get;set;}
+    public Boolean showPageError {get;set;} //validation error for partner users adding case products bug #345
+    private List<Selectoption> productList = new List<Selectoption>();
+    private Set<String> pNameList = new Set<String>();
+    private String p_Name = '';
+    private Integer i = 0;
+    public Boolean priceBookIdAdded {get;set;}
+    private String pb2Default = '';
+    private String filterCondition = '';
+    private String coreRecordTypeId = '';
+    private String displaySystemRecordTypeId = '';
+    private String literatureSampleRTId = '';
+    //private String competitorRTId = '';
+    private Boolean isOptyProduct = false;
+    private Boolean isCaseEntry = false;
+    public Boolean isDisplaySystem {get;set;}
+    private Boolean isLiteratureSystem = false;
+    private Boolean isQueryLimitChecked = false;
+    private String recId = '';
+    private Boolean isDMSRecordType = false;
+    private Boolean isLitSampleRecordType = false;
+    //private Boolean isCompetitorRecordType = false;
+    private Boolean isCaseLS = false;
+    private Case caseLSR = new Case();
+    private Boolean isSubmitAndMore = false;
+    private String source = '';
+    private User userRec = new User();
+    private String productCountry = '';
+    private String optyCurrencyCode = '';
+    private List<UserMetro__c> metroList = new List<UserMetro__c>();
+    private String partnerJobOpportunityId = '';
+    private String partnerProductRecordTypeId = '';
+    private Map<Integer, List<Selectoption>> priceGroupMap = new Map<Integer, List<Selectoption>>();
+    //Mohan: 2014/04/24
+    //to control the redirection to Case page in console window.
+    private Boolean isConsoleView = false;
+    public String redirectUrl {get;set;}
+    public String hasErrorOnSubmit {get;set;}
+    private String userUOM {get; set;}
+    private User u {get; set;}
+    public Integer estQuant {get; set;}
+    public String keyValue ;
+    private Boolean doSearchProduct = false;
+    private String previousDoSearchValue = '';
+    public String isLiveAgentAutoCase { get; set; } //CloudSherpas 5-12-2015: Added for Live Agent Case Product CR
+    public String liveAgentAutoCaseId { get; set; } //CloudSherpas 5-12-2015: Added for Live Agent Case Product CR
+
+    public ProductSearch() {
+        categoryOptions = new List<Selectoption>();
+        categorySelected = '';
+        priceBookOptions = new List<Selectoption>();
+        priceBookSelected = '';
+        businessUnitOptions = new List<Selectoption>();
+        businessUnitSelected = '';
+        recordTypeOptions = new List<Selectoption>();
+        recordTypeSelected = '';
+        priceGroupOptions = new List<Selectoption>();
+        //priceGroupSelected = '';
+        showBusinessUnitPicklist = false;
+        showRecordType = true;
+        showCommRes = true;
+        showPriceGroup = false;
+        priceBookIdAdded = false;
+        disableRecordType = false;
+        disableCommRes = false;
+        disableCategory = false;
+        disablePriceGroup = false;
+        showSecHeader = false;
+        productTitle = '';
+        headerTitle = '';
+        isQueryValid = false;
+        disableAddProduct = true;
+        showPrice = true;
+        showQty = true;
+        showPiclist = true;
+        showLine = true;
+        showUom_Quality = false;
+        showOLI_UOM = false;
+        showPriceBook = true;
+        isDisplaySystem = false;
+        isMetro = false;
+        isPriceException = false;
+        isPartnerJob = false;
+        showPageError = false;
+    hasErrorOnSubmit = 'no';
+        
+        //Mohan: 2014/04/24
+        //to control the redirection to Case page in console window.
+        System.debug('url : '+ Apexpages.currentPage().getUrl());
+        String isConsole = Apexpages.currentPage().getParameters().get('nonce');
+        if(isConsole != null && isConsole != '') isConsoleView = true;
+        System.debug('isConsoleView: '+ isConsoleView);
+        u = [select Id, UOM__c from User where Id =: UserInfo.getUserId()];        
+        recId = Apexpages.currentPage().getParameters().get('addTo');
+        if(recId == null || recId == '') recId = Apexpages.currentPage().getParameters().get('id');
+        String pageSource = Apexpages.currentPage().getParameters().get('source');
+        System.debug('recId1: '+recId);
+        System.debug('curPage : '+Apexpages.currentPage().getUrl());
+        //indicate the products search is for Opportunity
+        if(recId != null && recId != '') {
+            String curPage = Apexpages.currentPage().getUrl();
+            
+            if(curPage != null && (curPage.contains('OptyLineItem') || curPage.contains('optylineitem')) && recId.startsWith('006')) {
+                isOptyProduct = true;
+                showSecHeader = true;
+                productTitle = System.Label.Products_ProductTitle_Constructor_OpportunityLineItem;
+                showPrice = true;
+                showQty = true;
+                showOLI_UOM = true;
+            }
+        }
+        //set the value to null such that the record is identified as Spec Products
+        if(!isOptyProduct && recId != null && recId.startsWith('006')) recId = '';
+        
+        //indicate the products search is for Case
+        if(recId == null || recId == '') {
+            recId = Apexpages.currentPage().getParameters().get('caseId');
+            if(recId == null || recId == '') {
+                String curPage = Apexpages.currentPage().getUrl();
+                if(curPage != null && (curPage.contains('CaseProduct') || curPage.contains('caseproduct'))) {
+                    recId = Apexpages.currentPage().getParameters().get('retURL');
+                    if(recId != null) recId = recId.replace('/', '');
+                    recId = formatRecId(recId);
+                    System.debug('curPage: '+recId);
+                }
+            }
+            if(recId != null && recId != '') {
+                isCaseEntry = true;
+                productTitle = System.Label.Products_ProductTitle_Constructor_CaseProducts;
+                showPrice = false;
+                showQty = false;
+                showPriceBook = false;
+                showUom_Quality = true;
+                if(Userinfo.getUserType() == 'PowerPartner') {
+                    List<Case> caseRecord = [Select Id, IsClosed From Case Where Id =: recId];
+                    if(caseRecord.size() > 0 && caseRecord[0].IsClosed) { showPageError = true; return; }
+                }
+            }
+        }
+        
+        // Added by Cloud Sherpas 5-12-2015
+            try {
+                string cId;
+                if (ApexPages.currentPage().getParameters().containskey('caseId')) {
+                    cId = Apexpages.currentPage().getParameters().get('caseId');
+                } else if (ApexPages.currentPage().getParameters().containskey('retURL') && ApexPages.currentPage().getParameters().get('retURL').length() > 15) {
+                    cId = ApexPages.currentPage().getParameters().get('retURL').substring(1,16);
+                } 
+                if (cId != null && Id.ValueOf(cId).getsObjectType() == schema.Case.SobjectType) {
+                    Case currentCase = [SELECT Id, Live_Agent_Auto_Case__c FROM Case WHERE Id = :cId LIMIT 1];
+                    isLiveAgentAutoCase = currentCase.Live_Agent_Auto_Case__c;
+                    liveAgentAutoCaseId = currentCase.Id;
+                }
+            } catch(Exception ex) {
+                ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            }
+
+        
+        //indicate the products search is for Display/Merchandising
+        if(recId == null || recId == '') {
+            String curPage = Apexpages.currentPage().getUrl();
+            if(curPage != null && (curPage.contains('DisplaySystem') || curPage.contains('displaysystem'))) {
+                recId = Apexpages.currentPage().getParameters().get('retURL');
+                if(recId != null) recId = recId.replace('/', '');
+                recId = formatRecId(recId);
+                System.debug('curPage: '+recId);
+            }
+            if(recId != null && recId != '') {
+                isDisplaySystem = true;
+                productTitle = System.Label.Products_ProductTitle_Constructor_Disp_Merchandising;
+                showPrice = false;
+                showQty = true;
+                showPriceBook = false;
+            }
+        }
+        //indicate the products search is for Literature/Sample from Account record
+        /*if(recId == null || recId == '') {
+            recId = Apexpages.currentPage().getParameters().get('CF00N30000008szJd_lkid');
+            if(recId != null && recId != '') {
+                isLiteratureSystem = true;
+                productTitle = 'Literature/Sample Requests Products';
+                showPrice = false;
+                showQty = true;
+                showPriceBook = false;
+            }
+        }*/
+        //indicate the products search is for Literature/Sample from Case record
+        if(recId == null || recId == '') {
+            String curPage = Apexpages.currentPage().getUrl();
+            if(curPage != null && (curPage.contains('LiteratureSampleRequest') || curPage.contains('literaturesamplerequest'))) {
+                recId = Apexpages.currentPage().getParameters().get('retURL');
+                if(recId != null) recId = recId.replace('/', '');
+                recId = formatRecId(recId);
+                System.debug('curPage: '+recId);
+            }
+            if(recId != null && recId != '') {
+                isLiteratureSystem = true;
+                productTitle = System.Label.Products_ProductTitle_Constructor_Literature_Sample;
+                showPrice = false;
+                showQty = true;
+                showPriceBook = false;
+                isCaseLS = true;
+            }
+        }
+        
+        //indicate the products search is for Preferred Products from Price Exception record
+        if(recId == null || recId == '') {
+            String curPage = Apexpages.currentPage().getUrl();
+           if(curPage != null && (curPage.contains('PriceExceptionProduct') || curPage.contains('priceexceptionproduct') || curPage.contains('ImpactAnalysisTool') || curPage.contains('impactanalysistool') || curPage.contains('PriceExceptionMaintenance') || curPage.contains('priceexceptionmaintenance'))) {
+                /*recId = Apexpages.currentPage().getParameters().get('id');
+                if(recId == null || recId == '') recId = Apexpages.currentPage().getParameters().get('retURL');
+                if(recId != null) recId = recId.replace('/', '');
+                recId = formatRecId(recId);*/
+                recId = 'PriceException';
+                System.debug('curPage: '+recId);
+            }
+            if(recId != null && recId != '') {
+                isPriceException = true;
+                peRowIndex = Apexpages.currentPage().getParameters().get('peRowIndex');
+                productTitle = System.Label.Products_ProductTitle_Constructor_PriceException;
+                showPrice = false;
+                showQty = false;
+                showPriceBook = false;
+                showRecordType = false;
+                showCommRes = false;
+                isCaseLS = false;
+            }
+        }
+        
+                
+        //indicate the products search is for Spec Products for Opportunity record
+        if(recId == null || recId == '') {
+            String curPage = Apexpages.currentPage().getUrl();
+            if(curPage != null && (curPage.contains('PartnerJobProduct') || curPage.contains('partnerjobproduct'))) {
+                recId = Apexpages.currentPage().getParameters().get('retURL');
+                if(recId != null) recId = recId.replace('/', '');
+                recId = formatRecId(recId);
+                System.debug('curPage: '+recId);
+            }
+            if(recId != null && recId != '') {
+                isPartnerJob = true;
+                productTitle = System.Label.Products_ProductTitle_Constructor_PartnerJob;
+                showPrice = false;
+                showQty = true;
+                showPriceBook = false;
+                showRecordType = true;
+                showCommRes = false;
+                isCaseLS = false;
+            }
+        }
+        
+        if(pageSource != null && pageSource == 'Sidebar') {
+            recId = 'home/home.jsp';
+            isMetro = true;
+            productTitle = System.Label.Products_ProductTitle_Constructor_MetroPrice;
+            showPrice = false;
+            showQty = false;
+            showPriceBook = false;
+            showRecordType = false;
+            showCommRes = false;
+            isCaseLS = false;
+        }
+        
+        System.debug('recId: '+recId);
+        userRec = [Select Id, UserRole.Name, Profile.Name, ProfileId, UserType From User Where Id =: Userinfo.getUserId()];
+        //String curUserRole = userRec.UserRole.Name;
+        String curUserProfile = userRec.Profile.Name;
+        if(isPartnerJob && curUserProfile != null && !curUserProfile.contains('ABP')) showPrice = true;
+        String optyPriceBook = null;
+        if(isOptyProduct) {
+            List<Opportunity> optyList = [Select Id, Name, Pricebook2Id, CurrencyIsoCode From Opportunity Where Id =: recId Limit 1];
+            if(optyList != null && optyList.size() > 0) {
+                optyPriceBook = optyList[0].Pricebook2Id;
+                optyCurrencyCode = optyList[0].CurrencyIsoCode;
+            }
+        }
+        //get pricebook names
+        List<Pricebook2> pbList = new List<Pricebook2>();
+        if(optyPriceBook != null && optyPriceBook != '') {
+            pbList = [Select p.Name, p.IsStandard, p.IsActive, p.Id From Pricebook2 p where p.IsActive = true and p.Id =: optyPriceBook];
+        } else {
+            pbList = [Select p.Name, p.IsStandard, p.IsActive, p.Id From Pricebook2 p where p.IsActive = true];
+        }
+        if(isCaseEntry || isDisplaySystem || isLiteratureSystem) {
+            priceBookOptions.add(new Selectoption('', System.Label.Products_None_Picklist_Constructor));
+        }
+        for(Pricebook2 pb : pbList) {
+            if(pb2Default == null || pb2Default == '') pb2Default = pb.Id;
+            System.debug('curUserProfile: '+curUserProfile);
+            System.debug('pb.Name: ' + pb.Name);
+            if(isOptyProduct) {
+                System.debug('isOptyProduct');
+                if(optyPriceBook != null && optyPriceBook != '') {
+                    if(optyPriceBook == pb.Id) {
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        break;
+                    }
+                } 
+                if(curUserProfile.contains('Admin')) {
+                    priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                    continue;
+                }
+                //MB: Changed on June 5th - if(pb.Name == 'ABP Commercial Australia')
+                if(pb.Name == 'ABP Commercial - Australia') {
+                    System.debug('Inside condition 1:::'+curUserProfile);
+                    if(curUserProfile != null && (curUserProfile.contains('ABP') || curUserProfile.contains('support')) && (curUserProfile.contains('AUS') || curUserProfile.contains('Aus') || curUserProfile.contains('aus'))) {
+                        System.debug('Inside condition 2:::'+pb.Id+':::'+pb.Name);
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }
+                ////MB: Changed on June 5 - if(pb.Name == 'AFP Commercial Australia')
+                if(pb.Name == 'AFP Commercial - Australia') {
+                    if(curUserProfile != null && (curUserProfile.contains('AFP') || curUserProfile.contains('support')) && (curUserProfile.contains('AUS') || curUserProfile.contains('Aus') || curUserProfile.contains('aus'))) {
+                        
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }
+                if(pb.Name == 'AFP Commercial - Canada') {
+                    if(curUserProfile != null && (curUserProfile.contains('AFP')) && (curUserProfile.contains('America') || curUserProfile.contains('NA'))) {
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }
+                if(pb.Name == 'AFP Commercial - United States') {
+                    if(curUserProfile != null && (curUserProfile.contains('AFP')) && (curUserProfile.contains('America') || curUserProfile.contains('NA'))) {
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }
+                /*if(curUserRole != null && (curUserRole.contains('Americas') || curUserRole.contains('NA')) && curUserRole.contains('AFP')) {
+                    if(pb.Name == 'AFP Commercial - Canada' || pb.Name == 'AFP Comercial - United States') {
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }
+                if(curUserRole != null && curUserRole.contains('Australia') && curUserRole.contains('AFP')) {
+                    if(pb.Name == 'AFP Commercial - Australia') {
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }
+                if(curUserRole != null && curUserRole.contains('Australia') && curUserRole.contains('ABP')) {
+                    if(pb.Name == 'ABP Commercial - Australia') {
+                        priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+                        continue;
+                    }
+                }*/
+                continue;
+            }
+            System.debug('isOptyProduct1');
+            priceBookOptions.add(new Selectoption(pb.Id, pb.Name));
+        }
+        if(isCaseEntry || isDisplaySystem || isLiteratureSystem) {
+            pb2Default = '';
+        }
+        //business unit options
+        businessUnitOptions.add(new Selectoption('', System.Label.Products_None_Picklist_Constructor));
+        businessUnitOptions.add(new Selectoption('AFP', System.Label.Products_AFP_PickList_Constructor));
+        businessUnitOptions.add(new Selectoption('ABP', System.Label.Products_ABP_PickList_Constructor));
+        //get recordtype names & get default record types 
+        List<RecordType> recordTypeList = [Select r.SobjectType, r.Name, r.Id From RecordType r Where r.SobjectType='Product2' and Name != 'test' order by r.Name];
+        if(isCaseEntry || isDisplaySystem || isLiteratureSystem) {
+            recordTypeOptions.add(new Selectoption('', System.Label.Products_All_PickList_Constructor));
+        }
+        for(RecordType rt : recordTypeList) {
+            if(rt.Name == 'ABP Core') continue;
+            if((isOptyProduct || isPartnerJob) && (rt.Name == 'Display/Merchandising Systems' || rt.Name == 'Literature/Samples' || rt.Name == 'Competitor')) continue;
+            if(!isPartnerJob && (rt.Name == 'Partner Products' || rt.Name == 'Standard')) continue;
+            if(rt.Name == 'Price Group' || rt.Name == 'Standard') continue;
+            //if(userRec.ProfileId != null && userRec.Profile.Name != null && userRec.Profile.Name.contains('ABP') && rt.Name == 'Core') continue;
+            //if(userRec.ProfileId != null && userRec.Profile.Name != null && !userRec.Profile.Name.contains('ABP') && rt.Name == 'ABP Core') continue;
+            recordTypeOptions.add(new Selectoption(rt.Id, rt.Name));
+            if(rt.Name == 'Core') {
+                coreRecordTypeId = rt.Id;
+            }
+            if(rt.Name == 'Display/Merchandising Systems') {
+                displaySystemRecordTypeId = rt.Id;
+            }
+            if(rt.Name == 'Literature/Samples') {
+                literatureSampleRTId = rt.Id;
+            }
+            if(rt.Name == 'Partner Products') partnerProductRecordTypeId = rt.Id;
+            //if(rt.Name == 'Competitor') {
+            //  competitorRTId = rt.Id;
+            //}
+        }
+        
+        //Price group picklist preparation - fetch all the Products whose Record Type is equals to Price Group
+        //commented since the price group picklist was eliminated from search screen
+        /*if(isPriceException) {
+            //priceGroupOptions.add(new Selectoption('', '--None--'));
+            List<Product2> priceGroupList = [Select p.RecordTypeId, p.Name, p.Id From Product2 p Where p.RecordType.Name = 'Price Group' and IsActive = true order by p.Name];
+            Integer priceGroupTotalCount = priceGroupList.size();
+            if(priceGroupTotalCount > 250) {
+                Integer priceGroupItemCounter = 1;
+                Integer priceGroupIndexCounter = 1;
+                Boolean priceGroupInitialSetAdded = false;
+                Integer priceGroupItemsAdded = 0;
+                List<SelectOption> priceGroupOptionsTemp = new List<Selectoption>();
+                for(Product2 pg : priceGroupList) {
+                    if(priceGroupTotalCount > 248) {
+                        if(priceGroupItemCounter <= 250) {
+                            if(priceGroupItemCounter == 1) {
+                                System.debug('none');
+                                priceGroupOptionsTemp.add(new Selectoption('', '--None--'));
+                                priceGroupItemCounter++;
+                                if(priceGroupInitialSetAdded) {
+                                    priceGroupOptionsTemp.add(new Selectoption('Previous' + String.valueOf(priceGroupIndexCounter), 'Previous entries…'));
+                                    priceGroupItemCounter++;
+                                }
+                                if(!priceGroupInitialSetAdded) priceGroupInitialSetAdded = true;
+                            }
+                            priceGroupOptionsTemp.add(new Selectoption(pg.Id, pg.Name));
+                            priceGroupItemCounter++;
+                            priceGroupItemsAdded++;
+                            if(priceGroupItemCounter == 250) {
+                                if(priceGroupItemsAdded < priceGroupTotalCount) priceGroupOptionsTemp.add(new Selectoption('Next' + String.valueOf(priceGroupIndexCounter), 'Query more…'));
+                                priceGroupMap.put(priceGroupIndexCounter,priceGroupOptionsTemp);
+                                priceGroupIndexCounter++;
+                                priceGroupItemCounter = 1;
+                                priceGroupOptionsTemp = new List<Selectoption>();
+                            }
+                            
+                        }
+                    }
+                }
+                if(priceGroupOptionsTemp.size() > 0) priceGroupMap.put(priceGroupIndexCounter, priceGroupOptionsTemp);
+                priceGroupOptions = priceGroupMap.get(1);
+            } else {
+                priceGroupOptions.add(new Selectoption('', '--None--'));
+                for(Product2 pg : priceGroupList) {
+                    priceGroupOptions.add(new Selectoption(pg.Id, pg.Name));
+                }
+            }
+        }*/
+        
+        //category optoins - need to be finalized the options still
+        //Mohan 2014-06-09: bug 359 to include AS category to PartnerJob Product Search
+        categorySelected = 'Flooring';
+        if(isPriceException || isMetro) categoryOptions.add(new Selectoption('', System.Label.Products_None_Picklist_Constructor));
+        if(isPartnerJob) categoryOptions.add(new Selectoption('', System.Label.Products_All_PickList_Constructor));
+        if((!isPriceException && !isMetro) && (userRec.ProfileId != null && userRec.Profile.Name != null && !userRec.Profile.Name.contains('ABP'))) categoryOptions.add(new Selectoption('Flooring', System.Label.Products_Flooring_PickList_Constructor));
+        categoryOptions.add(new Selectoption('Ceiling', System.Label.Products_Ceiling_PickList_Constructor));
+        categoryOptions.add(new Selectoption('Grid', System.Label.Products_Grid_PickList_Constructor));
+        if(isPriceException || isMetro || (isPartnerJob && Userinfo.getUserType() ==  'PowerPartner') || (isCaseEntry && userRec.Profile.Name != null && userRec.Profile.Name.contains('ABP Americas'))) categoryOptions.add(new Selectoption('Architectural Specialties', System.Label.Products_AS_PickList_Constructor));
+        //categoryOptions.add(new Selectoption('Walls', 'Walls'));
+        
+        keyword = Apexpages.currentPage().getParameters().get('key');
+        if(keyword == null) keyword = '';
+
+        init();
+    }
+    
+    //method the set all the filter values with the default values
+    private void init() {
+        lineItemList = new List<LineItem>();
+        opportunity = new Opportunity();
+        olineItem = new OpportunityLineItem();
+        metroList = new List<UserMetro__c>();
+        priceBookSelected = pb2Default;
+        recordTypeSelected = coreRecordTypeId;
+        showBusinessUnitPicklist = false;
+        showPriceGroup = false;
+        isCommercial = true;
+        isResidential = false;
+        isQueryLimitChecked = false;
+        isQueryValid = false;
+        disableAddProduct = true;
+        //keyword = '';
+        showPiclist = true;
+        showLine = true;
+        isDMSRecordType = false;
+        isLitSampleRecordType = false;
+        categorySelected = 'Flooring';
+        //priceGroupSelected = '';
+        //isCompetitorRecordType = false;
+        System.debug('recId - init: '+recId);
+        //set the default values for the filter fields when the page is loaded for the Opportunity Product
+        Boolean showError = true;
+        if(recId != null && recId != '') {
+            if(isOptyProduct) {
+                isCommercial = true;
+                isResidential = false;
+                //get opportunity
+                List<Opportunity> optyList = [Select Id, Name, Pricebook2Id From Opportunity Where Id =: recId Limit 1];
+                if(optyList != null && optyList.size() > 0) opportunity = optyList[0];
+                showError = false;
+                headerTitle = 'Opportunity - ' + opportunity.Name;
+                //get opportunity product if existing to the default values for the filter criteria and disable the filter field to be unchanged
+                List<OpportunityLineItem> optyLineItemList = [Select o.Id, o.PricebookEntry.Product2.RecordTypeId, o.PricebookEntry.IsActive, o.PricebookEntry.Product2Id, 
+                                                                o.PricebookEntry.Product2.Commercial__c, o.PricebookEntry.Product2.Residential__c, 
+                                                                o.PricebookEntryId, o.OpportunityId From OpportunityLineItem o Where o.OpportunityId =: recId limit 1];
+                if(optyLineItemList != null && optyLineItemList.size() > 0) {
+                    OpportunityLineItem olItem = optyLineItemList[0];
+                    //if(categoryOptions != null && categoryOptions.size() == 1) disableCategory = true;
+                    //MB: Added the below line to set Category
+                    //categorySelected = olItem.Category__c;
+                    recordTypeSelected = olItem.PricebookEntry.Product2.RecordTypeId;
+                    disableRecordType = true;
+                    if(olItem.PricebookEntry.Product2.Commercial__c) {
+                        disableCommRes = true;
+                    }
+                    if(olItem.PricebookEntry.Product2.Residential__c) {
+                        disableCommRes = true;
+                    }
+                }
+                if(opportunity.Pricebook2Id != null) {
+                    priceBookIdAdded = true;
+                    priceBookSelected = opportunity.Pricebook2Id;
+                } else {
+                    priceBookIdAdded = false;
+                    priceBookSelected = '';
+                }
+            } else if(isCaseEntry) {
+                Case CaseRec = new Case();
+                List<Case> caseList = [Select Id, CaseNumber, AccountId From Case Where Id =: recId Limit 1];
+                if(caseList != null && caseList.size() > 0) caseRec = caseList[0];
+                if(caseRec.Id != null) {
+                    if(caseRec.AccountId != null) {
+                        redirectUrl = '\'/' + caseRec.AccountId + '\', ' + '\'/' + recId + '\'';
+                    } else {
+                        redirectUrl = '\'/' + recId + '\'';
+                    }
+                    
+                    redirectUrl = '[' + redirectUrl + ']';
+                }
+                showError = false;
+                headerTitle = System.Label.Products_ProductTitle_Init_Case + caseRec.CaseNumber;
+                isCommercial = true;
+                isResidential = true;
+            } else if(isDisplaySystem) {
+                Account AccRec = new Account();
+                List<Account> acctList = [Select Id, Name From Account Where Id =: recId Limit 1];
+                if(acctList != null && acctList.size() > 0) AccRec = acctList[0];
+                showError = false;
+                headerTitle = System.Label.Products_ProductTitle_Init_Account + AccRec.Name;
+                isCommercial = true;
+                isResidential = true;
+                recordTypeSelected = displaySystemRecordTypeId;
+                showPiclist = false;
+                showLine = false;
+                isDMSRecordType = true;
+            } else if(isLiteratureSystem) {
+                if(recId.startsWith('001')) {
+                    Account AccRec = new Account();
+                    List<Account> acctList = [Select Id, Name From Account Where Id =: recId Limit 1];
+                    if(acctList != null && acctList.size() > 0) AccRec = acctList[0];
+                    showError = false;
+                    headerTitle = System.Label.Products_ProductTitle_Init_Account + AccRec.Name;
+                } else {
+                    caseLSR = new Case();
+                    List<Case> caseList = [Select c.Id, c.ContactId, c.CaseNumber, c.AccountId From Case c Where Id =: recId Limit 1];
+                    if(caseList != null && caseList.size() > 0) caseLSR = caseList[0];
+                    showError = false;
+                    headerTitle = System.Label.Products_ProductTitle_Init_Case + caseLSR.CaseNumber;
+                }
+                isCommercial = true;
+                isResidential = false;
+                recordTypeSelected = literatureSampleRTId;
+                isLitSampleRecordType = true;
+                showPiclist = false;
+                showLine = false;
+            } else if(isPriceException) {
+                headerTitle = System.Label.Products_ProductTitle_Init_PriceException;
+                showError = false;
+                isCommercial = false;
+                isResidential = false;
+                showPiclist = true;
+                showLine = true;
+                showPriceGroup = true;
+                
+            } else if(isPartnerJob) {
+                List<PartnerJob__c> partnerJobList = [Select Id, Name, Opportunity__c, Opportunity__r.Pricebook2Id, Opportunity__r.CurrencyIsoCode 
+                                                        From PartnerJob__c Where Id =: recId Limit 1];
+                if(partnerJobList != null && partnerJobList.size() > 0) {
+                    headerTitle = System.Label.Products_ProductTitle_Init_PartnerJob + partnerJobList[0].Name;
+                    partnerJobOpportunityId = partnerJobList[0].Opportunity__c;
+                    priceBookSelected = partnerJobList[0].Opportunity__r.Pricebook2Id;
+                    optyCurrencyCode = partnerJobList[0].Opportunity__r.CurrencyIsoCode;
+                }
+                recordTypeSelected = coreRecordTypeId;
+                showError = false;
+                isCommercial = false;
+                isResidential = false;
+                showPiclist = true;
+                showLine = true;
+            } else if(isMetro) {
+                headerTitle = System.Label.Products_ProductTitle_Init_MetroPrice;
+                showError = false;
+                isCommercial = false;
+                isResidential = false;
+                showPiclist = true;
+                showLine = true;
+                showPriceGroup = false;
+            }
+        }
+        //set default business unit based on the logged in user role
+        String businessUnit = Apexpages.currentPage().getParameters().get('bunit');
+        if(businessUnit != null && businessUnit != '') {
+            showBusinessUnitPicklist = true;
+            businessUnitSelected = businessUnit;
+        } else {
+            showBusinessUnitPicklist = false;
+            String roleName = userRec.UserRole.Name;
+            if(roleName != null && roleName != '') {
+                if(roleName.contains('AFP')) {
+                    businessUnitSelected = 'AFP';
+                } else if(roleName.contains('ABP')) {
+                    businessUnitSelected = 'ABP';
+                }
+            } else {
+                if(isPriceException || isMetro) businessUnitSelected = 'ABP';
+                else businessUnitSelected = 'AFP';
+            }
+            
+            //Mohan 2014-06-09: Bug 359 to include ABP filter for ABP Partner users
+            //Mohan 2014-08-28: Adjust the business unit based on the profile name
+            if(Userinfo.getUserType() ==  'PowerPartner' && userRec.Profile.Name != null && userRec.Profile.Name.contains('ABP')) businessUnitSelected = 'ABP';
+            else if(Userinfo.getUserType() ==  'PowerPartner' && userRec.Profile.Name != null && userRec.Profile.Name.contains('AFP')) businessUnitSelected = 'AFP';
+        }
+
+        if(userRec.ProfileId != null) {
+            if(isPriceException || isMetro) {
+                productCountry = 'Americas';
+            } else {
+                if(userRec.Profile.Name != null) {
+                    if(userRec.Profile.Name.contains('AUS') || userRec.Profile.Name.contains('Aus') || userRec.Profile.Name.contains('aus')) {
+                        productCountry = 'Australia';
+                    } else if(userRec.Profile.Name.contains('America') || userRec.Profile.Name.contains('NA')) {
+                        productCountry = 'Americas';
+                    } else if(userRec.Profile.Name.contains('AFP') && userRec.Profile.Name.contains('Partner')) productCountry = 'Americas';    //Mohan 09/08/2014: defaulting country as Americas for AFP portal users
+                }
+            }
+        }
+        
+        if(userRec.Profile.Name != null && userRec.Profile.Name.contains('ABP Americas')) {
+            showRecordType = false;
+            
+            if(isDisplaySystem) {
+                showCommRes = false;
+            }
+        }
+        //Mohan 09/08/2014: defaulting Flooring for AFP portal users and last condition as ELSE IF
+        if(isPartnerJob && userRec.ProfileId != null && userRec.Profile.Name != null && userRec.Profile.Name.contains('AFP')) categorySelected = 'Flooring';
+        else if((isPriceException || isMetro || isPartnerJob) || (userRec.ProfileId != null && userRec.Profile.Name != null && userRec.Profile.Name.contains('ABP'))) categorySelected = 'Ceiling';
+        else if(isPriceException || isPartnerJob || isMetro) categorySelected = '';
+        
+        if(showError) {
+            ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Init_Invalid);
+            ApexPages.addMessage(msg);
+        }
+        System.debug('init-keyword: '+keyword);
+        if(!showError && isPriceException && keyword != null && keyword != '') {
+            searchKeyword();
+            if(isQueryValid) addRow();
+        }
+    }
+    
+    //method to add new row in the product list
+    public void addRow() {
+        if(!isQueryValid) {
+            ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Init_TooMany);
+            ApexPages.addMessage(msg);
+            return;
+        }
+        if(opportunity != null) {
+           if(!isPriceException && !isPartnerJob && !isMetro && (categorySelected == null || categorySelected == '')) {
+                ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Init_PleaseSelect);
+                ApexPages.addMessage(msg);
+                return;
+            }
+            if(filterCondition == null || filterCondition == '') {
+                filterCondition = setFilterCriteria();
+            }
+            Integer newRowIndex = lineItemList.size();
+            LineItem lItem = new LineItem();
+            lItem.prodName = categorySelected;
+            lItem.rowIndex = newRowIndex;
+            if(isDMSRecordType) {
+                lItem.prodSubCategory = 'DMS';
+                lItem.prodFamily = 'DMS';
+                lItem.prodLine = 'DMS';
+            }
+            if(isLitSampleRecordType) {
+                lItem.prodSubCategory = 'Literature/Samples';
+                lItem.prodFamily = 'Literature/Samples';
+            }
+            if(isDisplaySystem) {
+                lItem.quantity = 1;
+                lItem.oli.ServiceDate = Date.today();
+                lItem.displayMerch.Date_Installed__c = Date.today();
+            }
+            if(isLiteratureSystem || isPartnerJob) {
+                lItem.quantity = 1;
+            }
+            if(isMetro) {
+                
+            }
+            lineItemList.add(lItem);
+            String newRowIndexStr = String.valueOf(newRowIndex);
+            System.currentPageReference().getParameters().put('rIndex',newRowIndexStr);
+            if(isDMSRecordType) {
+                fetchItem();
+            } else if(isLitSampleRecordType) {
+                fetchLine();
+            } else {
+                fetchSubCategory();
+            }
+        }
+    }
+    
+    //Validating the prevent the Query rows exceed limit reached.
+    public void validateQuery() {
+        if(!isPriceException && !isPartnerJob && !isMetro && (categorySelected == null || categorySelected == '')) {
+            ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Init_PleaseSelect);
+            ApexPages.addMessage(msg);
+            return;
+        }
+        if(!isQueryLimitChecked) {
+            isQueryLimitChecked = true;
+            isQueryValid = true;
+            disableAddProduct = false;
+            String specialCondition = '';
+            if(keyword == null || keyword == '') {
+                if(recordTypeSelected != partnerProductRecordTypeId) specialCondition = ' and Product2.Family__c = null';
+            }
+            //if the total product found beyond 48000 show a error msg to the user to enter keyword and search further
+            //if the Product search is for Display/Merchandising Record Type runs the query on the Product2 object or on the PriceBookEntry object
+            if(isOptyProduct) {
+                List<PricebookEntry> recordCount= Database.query('select Product2.Sub_category__c From PricebookEntry Where IsActive = true and (Product2.IsActive = true and Product2.Sub_category__c != null ' + specialCondition + ')' + filterCondition + ' limit 48000');
+            } else {
+                if(isDMSRecordType) {
+                    List<Product2> recordCount= Database.query('select Item__c From Product2 Where IsActive = true and Item__c != null and Sub_category__c=\'DMS\' and Family__c=\'DMS\' and Line__c=\'DMS\' ' + filterCondition + ' limit 48000');
+                } else if(isLitSampleRecordType) {
+                    List<Product2> recordCount= Database.query('select Line__c From Product2 Where IsActive = true and Line__c != null and Sub_category__c=\'Literature/Samples\' and Family__c=\'Literature/Samples\' ' + filterCondition + ' limit 48000');
+                } else {
+                    List<Product2> recordCount= Database.query('select Product2.Sub_category__c From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' Product2.Sub_category__c != null ' + specialCondition + filterCondition + ' limit 48000');
+                }
+            }
+            if(Limits.getQueryRows() >= 48000) {
+                isQueryValid = false;
+                disableAddProduct = true;
+                ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Init_TooMany);
+                ApexPages.addMessage(msg);
+                return;
+            }
+        }
+    }
+    
+    //get product sub category based on the product category selected and other filter criteria
+    public void fetchSubCategory() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            String pName = lineItemList.get(integer.valueOf(rowIndex)).prodName;
+            if((pName != null && pName != '') || isPriceException || isPartnerJob || isMetro) {
+                Integer rIndex = integer.valueOf(rowIndex);
+                lineItemList.get(rIndex).subCategoryOptions.clear();
+                lineItemList.get(rIndex).familyOptions.clear();
+                lineItemList.get(rIndex).itemOptions.clear();
+                lineItemList.get(rIndex).lineOptions.clear();
+
+            //Wonder CRM Request 10003 Clarity 32688
+            lineItemList.get(rIndex).prodSpecQuality = '';
+            lineItemList.get(rIndex).specQualityOptions.clear();
+            //Wonder CRM Request 10003 Clarity 32688
+
+                lineItemList.get(rIndex).pCode = '';
+                if(isMetro) {
+                    lineItemList.get(rIndex).metroOptions.clear();
+                    lineItemList.get(rIndex).metro = null;
+                    lineItemList.get(rIndex).distributorMetroPrice = null;
+                    lineItemList.get(rIndex).contractorMetroPrice = null;
+                }
+                lineItemList.get(rIndex).avgSalesPrice = null;
+                i = 0;
+                String s_Category = '';
+                lineItemList.get(rIndex).subCategoryOptions.add(new Selectoption('', System.Label.Products_SelectCategory_PickList_FetchSubCategory));
+                List<AggregateResult> productList = new List<AggregateResult>();
+                String specialCondition = '';
+                if(keyword == null || keyword == '') {
+                    if(recordTypeSelected != partnerProductRecordTypeId) specialCondition = ' and Product2.Family__c = null';
+                }
+                if(isOptyProduct) {
+                    System.debug('fetchSubCategory : ' + 'select Product2.Sub_category__c subCategory From PricebookEntry Where IsActive = true and (Product2.IsActive = true and Product2.Sub_category__c != null ' + specialCondition + ')' + filterCondition + ' GROUP BY Product2.Sub_category__c ORDER BY Product2.Sub_category__c');
+                    productList = Database.query('select Product2.Sub_category__c subCategory From PricebookEntry Where IsActive = true and (Product2.IsActive = true and Product2.Sub_category__c != null ' + specialCondition + ')' + filterCondition + ' GROUP BY Product2.Sub_category__c ORDER BY Product2.Sub_category__c');
+                } else {
+                    System.debug('fetchSubCategory : ' + 'select Sub_category__c subCategory From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' Sub_category__c != null ' + specialCondition + filterCondition + ' GROUP BY Sub_category__c ORDER BY Sub_category__c');
+                    productList = Database.query('select Sub_category__c subCategory From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' Sub_category__c != null ' + specialCondition + filterCondition + ' GROUP BY Sub_category__c ORDER BY Sub_category__c');
+                }
+                //show error msg if no sub category found
+                if(productList != null && productList.size() == 0) {
+                    ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_fetchSubCategory_NoProducts);
+                    ApexPages.addMessage(msg);
+                    lineItemList.remove(rIndex);
+                    return;
+                }
+                for(AggregateResult ar : productList) {
+                    String subCategory = String.valueOf(ar.get('subCategory'));
+                    String subCategoryValue = subCategory;
+                    if(subCategoryValue.indexOf('  ') > -1) {
+                        subCategoryValue = subCategoryValue.replaceAll('  ', ' ');
+                        lineItemList.get(rIndex).subCategoryMap.put(subCategoryValue, subCategory);
+                    }
+                    if(i == 0) {
+                        s_Category = subCategory;
+                        i++;
+                    }
+                    lineItemList.get(rIndex).subCategoryOptions.add(new Selectoption(subCategoryValue, subCategory));
+                }
+                System.currentPageReference().getParameters().put('rIndex', rowIndex);
+                if(lineItemList.get(rIndex).subCategoryOptions.size() == 2) {
+                    lineItemList.get(rIndex).prodSubCategory = formatText(s_Category);
+                    //fetchProductCode();
+                    fetchFamily();
+                }
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    //get product family based on the filter criteria selected
+    public void fetchFamily() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            System.debug('rowIndex:'+rowIndex);
+            LineItem lItem = lineItemList.get(integer.valueOf(rowIndex));
+            String pName = lItem.prodName;
+            String subCategory = formatHierarchyValue(lItem.prodSubCategory, lItem.subCategoryMap);
+            Integer rIndex = integer.valueOf(rowIndex);
+            lineItemList.get(rIndex).prodFamily = '';
+            lineItemList.get(rIndex).prodLine = '';
+            lineItemList.get(rIndex).prodItem = '';
+            lineItemList.get(rIndex).familyOptions.clear();
+            lineItemList.get(rIndex).itemOptions.clear();
+            lineItemList.get(rIndex).lineOptions.clear();
+            lineItemList.get(rIndex).pCode = '';
+            if(isMetro) {
+                lineItemList.get(rIndex).metroOptions.clear();
+                lineItemList.get(rIndex).metro = null;
+                lineItemList.get(rIndex).distributorMetroPrice = null;
+                lineItemList.get(rIndex).contractorMetroPrice = null;
+            }
+            lineItemList.get(rIndex).avgSalesPrice = null;
+            if(subCategory != null && subCategory != '') {
+                i = 0;
+                String p_Family = '';
+                String specialCondition = '';
+                if(keyword == null || keyword == '') {
+                    if(recordTypeSelected != partnerProductRecordTypeId) specialCondition = ' and Product2.Line__c = null';
+                }
+                lineItemList.get(rIndex).familyOptions.add(new Selectoption('', System.Label.Products_None_Picklist_Constructor));
+                List<AggregateResult> productList = new List<AggregateResult>();
+                if(isOptyProduct) {
+                    System.debug('fetchFamily: '+'select Product2.Family__c family From PricebookEntry Where IsActive = true and (Product2.Sub_Category__c =\'' + subCategory + '\' AND Product2.IsActive = true and Product2.Family__c != null)' + specialCondition + filterCondition + ' GROUP BY Product2.Family__c ORDER BY Product2.Family__c');
+                    productList = Database.query('select Product2.Family__c family From PricebookEntry Where IsActive = true and (Product2.Sub_Category__c =\'' + subCategory + '\' AND Product2.IsActive = true and Product2.Family__c != null)' + specialCondition + filterCondition + ' GROUP BY Product2.Family__c ORDER BY Product2.Family__c');
+                } else {
+                    System.debug('fetchFamily: '+'select Family__c family From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' and Family__c != null)' + specialCondition + filterCondition + ' GROUP BY Family__c ORDER BY Family__c');
+                    productList = Database.query('select Family__c family From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' and Family__c != null)' + specialCondition + filterCondition + ' GROUP BY Family__c ORDER BY Family__c');
+                }
+                if(productList.size() > 0) {
+                    lineItemList.get(rIndex).familyOptions.clear();
+                    lineItemList.get(rIndex).familyOptions.add(new Selectoption('', System.Label.Products_SelectFamily_fetchFamily_PickList));
+                }
+                for(AggregateResult ar : productList) {
+                    String family = String.valueOf(ar.get('family'));
+                    String familyValue = family;
+                    if(familyValue.indexOf('  ') > -1) {
+                        familyValue = familyValue.replaceAll('  ', ' ');
+                        lineItemList.get(rIndex).familyMap.put(familyValue, family);
+                    }
+                    if(i == 0) {
+                        p_Family = family;
+                        i++;
+                    }
+                    lineItemList.get(rIndex).familyOptions.add(new Selectoption(familyValue, family));
+                }
+                System.currentPageReference().getParameters().put('rIndex', rowIndex);
+                //check is the family options are more than one(excluding the NONE option). If found more default if the none option else 
+                //default it to that only option(sames follows for the other picklist preparation).
+                if(lineItemList.get(rIndex).familyOptions.size() == 2) {
+                    lineItemList.get(rIndex).prodFamily = formatText(p_Family);
+                    fetchLine();
+                } else {
+                    source = 'Family';
+                    fetchProductCode();
+                }
+                
+            } else {
+                source = '';
+                fetchProductCode();
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    //get product line based on the filter criteria selected
+    public void fetchLine() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            System.debug('rowIndex:'+rowIndex);
+            LineItem lItem = lineItemList.get(integer.valueOf(rowIndex));
+            String pName = lItem.prodName;
+            String subCategory = formatHierarchyValue(lItem.prodSubCategory, lItem.subCategoryMap);
+            String family = formatHierarchyValue(lItem.prodFamily, lItem.familyMap);
+            Integer rIndex = integer.valueOf(rowIndex);
+            lineItemList.get(rIndex).prodLine = '';
+            lineItemList.get(rIndex).prodItem = '';
+            lineItemList.get(rIndex).itemOptions.clear();
+            lineItemList.get(rIndex).lineOptions.clear();
+            lineItemList.get(rIndex).pCode = '';
+            if(isMetro) {
+                lineItemList.get(rIndex).metroOptions.clear();
+                lineItemList.get(rIndex).metro = null;
+                lineItemList.get(rIndex).distributorMetroPrice = null;
+                lineItemList.get(rIndex).contractorMetroPrice = null;
+            }
+            lineItemList.get(rIndex).avgSalesPrice = null;
+            if(family != null && family != '') {
+                i = 0;
+                String p_Line = '';
+                String specialCondition = '';
+                if(keyword == null || keyword == '') {
+                    if(recordTypeSelected != partnerProductRecordTypeId) specialCondition = ' and Product2.Item__c = null';
+                }
+                lineItemList.get(rIndex).lineOptions.add(new Selectoption('', System.Label.Products_None_Picklist_Constructor));
+                List<AggregateResult> productList = new List<AggregateResult>();
+                if(isOptyProduct) {
+                    System.debug('fetchFamily: '+'select Product2.Line__c line From PricebookEntry Where IsActive = true and (Product2.Sub_Category__c =\'' + subCategory + '\' AND Product2.Family__c =\'' + family + '\' AND Product2.IsActive = true and Product2.Line__c != null)' + filterCondition + ' GROUP BY Product2.Line__c ORDER BY Product2.Line__c');
+                    productList = Database.query('select Product2.Line__c line From PricebookEntry Where IsActive = true and (Product2.Sub_Category__c =\'' + subCategory + '\' AND Product2.Family__c =\'' + family + '\' AND Product2.IsActive = true and Product2.Line__c != null)' + filterCondition + ' GROUP BY Product2.Line__c ORDER BY Product2.Line__c');
+                } else {
+                    if(isLitSampleRecordType) {
+                        System.debug('fetchline: '+'select Line__c line From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' AND Family__c =\'' + family + '\' AND Line__c != null)' + filterCondition + ' GROUP BY Line__c ORDER BY Line__c');
+                        productList = Database.query('select Line__c line From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' AND Family__c =\'' + family + '\' AND Line__c != null)' + filterCondition + ' GROUP BY Line__c ORDER BY Line__c');
+                    } else {
+                        System.debug('fetchline: '+'select Line__c line From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' AND Family__c =\'' + family + '\' AND Line__c != null)' + specialCondition + filterCondition + ' GROUP BY Line__c ORDER BY Line__c');
+                        productList = Database.query('select Line__c line From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' AND Family__c =\'' + family + '\' AND Line__c != null)' + specialCondition + filterCondition + ' GROUP BY Line__c ORDER BY Line__c');
+                    }
+                    //show error msg if no Line are found for Literature/Samples record type
+                    if(isLitSampleRecordType && productList != null && productList.size() == 0) {
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_fetchSubCategory_NoProducts);
+                        ApexPages.addMessage(msg);
+                        lineItemList.remove(rIndex);
+                        return;
+                    }
+                }
+                if(productList.size() > 0) {
+                    lineItemList.get(rIndex).lineOptions.clear();
+                    lineItemList.get(rIndex).lineOptions.add(new Selectoption('', System.Label.Products_SelectLine_PickList_fetchLine));
+                }
+                for(AggregateResult ar : productList) {
+                    String line = String.valueOf(ar.get('line'));
+                    String lineValue = line;
+                    if(lineValue.indexOf('  ') > -1) {
+                        lineValue = lineValue.replaceAll('  ', ' ');
+                        lineItemList.get(rIndex).lineMap.put(lineValue, line);
+                    }
+                    if(i == 0) {
+                        p_Line = line;
+                        i++;
+                    }
+                    lineItemList.get(rIndex).lineOptions.add(new Selectoption(lineValue, line));
+                    //lineItemList.get(rIndex).lineOriginal.add(line);
+                }
+                System.currentPageReference().getParameters().put('rIndex', rowIndex);
+                if(lineItemList.get(rIndex).lineOptions.size() == 2) {
+                    lineItemList.get(rIndex).prodLine = formatText(p_Line);
+                    fetchItem();
+                } else {
+                    source = 'Line';
+                    fetchProductCode();
+                }
+            } else {
+                source = 'Line';
+                fetchProductCode();
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    //get product item based on the filter criteria selected
+    public void fetchItem() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            String newIndex = Apexpages.currentPage().getParameters().get('index');
+            System.debug('rowIndex:'+rowIndex);
+            LineItem lItem = lineItemList.get(integer.valueOf(rowIndex));
+            String pName = lItem.prodName;
+            String subCategory = formatHierarchyValue(lItem.prodSubCategory, lItem.subCategoryMap);
+            String family = formatHierarchyValue(lItem.prodFamily, lItem.familyMap);
+            String line = formatHierarchyValue(lItem.prodLine, lItem.lineMap);
+            //line = lItem.lineOriginal.get(integer.valueOf(newIndex));
+            Integer rIndex = integer.valueOf(rowIndex);
+            List<String> styleList = new List<String>();
+            lineItemList.get(rIndex).prodItem = '';
+            lineItemList.get(rIndex).itemOptions.clear();
+            lineItemList.get(rIndex).pCode = '';
+
+            //Wonder CRM Request 10003 Clarity 32688
+            lineItemList.get(rIndex).prodSpecQuality = '';
+            lineItemList.get(rIndex).specQualityOptions.clear();
+            
+            
+                    lineItemList.get(rIndex).specQualityOptions.add(new Selectoption('', System.Label.Products_ProductSearch_SelectOption_SelectSpecQuality));
+                    lineItemList.get(rIndex).specQualityOptions.add(new Selectoption('Armstrong Closed', System.Label.Products_ProductSearch_ArmstrongClosed));
+                    lineItemList.get(rIndex).specQualityOptions.add(new Selectoption('Armstrong or =', System.Label.Products_ProductSearch_ArmstrongOr));
+                    lineItemList.get(rIndex).specQualityOptions.add(new Selectoption('Competitive Closed', System.Label.Products_ProductSearch_CompetitiveClosed));
+                    lineItemList.get(rIndex).specQualityOptions.add(new Selectoption('Competitive or =', System.Label.Products_ProductSearch_CompetitiveOr));
+            //Wonder CRM Request 10003 Clarity 32688
+
+
+            if(isMetro) {
+                lineItemList.get(rIndex).metroOptions.clear();
+                lineItemList.get(rIndex).metro = null;
+                lineItemList.get(rIndex).distributorMetroPrice = null;
+                lineItemList.get(rIndex).contractorMetroPrice = null;
+            }
+            lineItemList.get(rIndex).avgSalesPrice = null;
+            if(line != null && line != '') {
+                i = 0;
+                String p_Item = '';
+                List<Selectoption> tempItemOpt = new List<Selectoption>();
+                
+                //lineItemList.get(rIndex).itemOptions.add(new Selectoption('', '--None--'));
+                List<AggregateResult> productList = new List<AggregateResult>();
+                if(isOptyProduct) {
+                    System.debug('fetchItem: '+'select Product2.Item__c item From PricebookEntry Where IsActive = true and (Product2.Sub_Category__c =\'' + subCategory + '\' AND Product2.Family__c =\'' + family + '\' AND Product2.Line__c =\'' + line + '\' AND Product2.IsActive = true and Product2.Item__c != null)' + filterCondition + ' GROUP BY Product2.Item__c ORDER BY Product2.Item__c');
+                    productList = Database.query('select Product2.Item__c item From PricebookEntry Where IsActive = true and (Product2.Sub_Category__c =\'' + subCategory + '\' AND Product2.Family__c =\'' + family + '\' AND Product2.Line__c =\'' + line + '\' AND Product2.IsActive = true and Product2.Item__c != null)' + filterCondition + ' GROUP BY Product2.Item__c ORDER BY Product2.Item__c');
+                } else {
+                    System.debug('fetchItem: '+'select Item__c item From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' AND Family__c =\'' + family + '\' AND Line__c =\'' + line + '\' AND Item__c != null)' + filterCondition + ' GROUP BY Item__c ORDER BY Item__c');
+                    productList = Database.query('select Item__c item From Product2 Where ' + ((isCaseEntry) ? '' : 'IsActive = true and ') + ' (Sub_Category__c =\'' + subCategory + '\' AND Family__c =\'' + family + '\' AND Line__c =\'' + line + '\' AND Item__c != null)' + filterCondition + ' GROUP BY Item__c ORDER BY Item__c');
+                    //show error msg if no ITems found for Display system products
+                    if(isDMSRecordType) {
+                        if(productList != null && productList.size() == 0) {
+                            ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_fetchSubCategory_NoProducts);
+                            ApexPages.addMessage(msg);
+                            lineItemList.remove(rIndex);
+                            return;
+                        }
+                    }
+                }
+                
+                Integer itemCounter = 1;
+                Integer itemTtlCount = productList.size();
+                Integer indexCounter = 1;
+                Boolean initialSetAdded = false;
+                Integer itemsAdded = 0;
+                if(itemTtlCount <= 248) {
+                    if(itemTtlCount > 0) tempItemOpt.add(new Selectoption('', System.Label.Products_ProductSearch_SelectOption_SelectItem));
+                    else if(itemTtlCount == 0) tempItemOpt.add(new Selectoption('', '--None--'));
+                }
+                for(AggregateResult ar : productList) {
+                    String item = String.valueOf(ar.get('item'));
+                    String itemValue = item;
+                    if(itemValue.indexOf('  ') > -1) {
+                        itemValue = itemValue.replaceAll('  ', ' ');
+                        lineItemList.get(rIndex).itemMap.put(itemValue, item);
+                    }
+                    if(i == 0) {
+                        p_Item = item;
+                        i++;
+                    }
+                    if(itemTtlCount > 248) {
+                        if(itemCounter <= 250) {
+                            if(itemCounter == 1) {
+                                System.debug('none');
+                                tempItemOpt.add(new Selectoption('', System.Label.Products_ProductSearch_SelectOption_SelectItem));
+                                itemCounter++;
+                                if(initialSetAdded) {
+                                    System.debug('String.valueOf(indexCounter): '+String.valueOf(indexCounter));
+                                    tempItemOpt.add(new Selectoption('Previous' + String.valueOf(indexCounter), System.Label.Products_ProductSearch_PreviousEntries));
+                                    itemCounter++;
+                                }
+                                if(!initialSetAdded) initialSetAdded = true;
+                            }
+                            tempItemOpt.add(new Selectoption(itemValue, item));
+                            itemCounter++;
+                            itemsAdded++;
+                            if(itemCounter == 250) {
+                                if(itemsAdded < itemTtlCount) tempItemOpt.add(new Selectoption('Next' + String.valueOf(indexCounter), system.Label.Products_ProductSearch_QueryMore));
+                                lineItemList.get(rIndex).itemOptionsMap.put(indexCounter,tempItemOpt);
+                                indexCounter++;
+                                itemCounter = 1;
+                                tempItemOpt = new List<Selectoption>();
+                            }
+                            
+                        }
+                    } else {
+                        tempItemOpt.add(new Selectoption(itemValue, item));
+                        itemCounter++;
+                    }
+                    
+                    //lineItemList.get(rIndex).itemOptions.add(new Selectoption(itemValue, item));
+                }
+                if(itemTtlCount > 248) lineItemList.get(rIndex).itemOptionsMap.put(indexCounter,tempItemOpt);
+                else lineItemList.get(rIndex).itemOptionsMap.put(1,tempItemOpt);
+                System.debug('lineItemList.get(rIndex).itemOptionsMap: '+lineItemList.get(rIndex).itemOptionsMap);
+                lineItemList.get(rIndex).itemOptions = lineItemList.get(rIndex).itemOptionsMap.get(1);
+                System.currentPageReference().getParameters().put('rIndex', rowIndex);
+                source = 'Item';
+                if(lineItemList.get(rIndex).itemOptions.size() == 2) {
+                    lineItemList.get(rIndex).prodItem = formatText(p_Item);
+                    fetchProductCode();
+                } else {
+                    fetchProductCode();
+                }
+                //lineItemList.get(rIndex).prodLine = lItem.prodLine.replaceAll('  ', ' ');
+            } else {
+                source = 'Item';
+                fetchProductCode();
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    /*
+    public void fetchMorePriceGroup() {
+        if(priceGroupSelected.contains('Next')) {
+            String idx = priceGroupSelected.replace('Next', '');
+            priceGroupOptions = priceGroupMap.get(Integer.valueOf(idx) + 1);
+        } else if(priceGroupSelected.contains('Previous')) {
+            String idx = priceGroupSelected.replace('Previous', '');
+            priceGroupOptions = priceGroupMap.get(Integer.valueOf(idx) - 1);
+        }
+    }*/
+    
+    //get product code based on the filter criteria selected with matching subcategory, family, line & item combination
+    public void fetchProductCode() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            System.debug('rowIndex:'+rowIndex);
+            Integer rIndex = integer.valueOf(rowIndex);
+            LineItem lItem = lineItemList.get(rIndex);
+            String pName = lItem.prodName;
+            String subCategory = formatHierarchyValue(lItem.prodSubCategory, lItem.subCategoryMap);
+            String family = formatHierarchyValue(lItem.prodFamily, lItem.familyMap);
+            String line = formatHierarchyValue(lItem.prodLine, lItem.lineMap);
+            String item = formatHierarchyValue(lItem.prodItem, lItem.itemMap);
+            String qCondi = '';
+            System.debug('item: '+item);
+            if(item != null && (item.contains('Next') || item.contains('Previous'))) {
+                if(item.contains('Next')) {
+                    String idx = item.replace('Next', '');
+                    lineItemList.get(rIndex).itemOptions = lineItemList.get(rIndex).itemOptionsMap.get(Integer.valueOf(idx) + 1);
+                } else if(item.contains('Previous')) {
+                    String idx = item.replace('Previous', '');
+                    lineItemList.get(rIndex).itemOptions = lineItemList.get(rIndex).itemOptionsMap.get(Integer.valueOf(idx) - 1);
+                }
+                lineItemList.get(rIndex).prodItem = '';
+                lineItemList.get(rIndex).pCode = '';
+                lineItemList.get(rIndex).caseProd.UOM__c = '';
+                lineItemList.get(rIndex).userUOMVal = '';
+                lineItemList.get(rIndex).oli.UOM__c = '';
+                //Wonder CRM Request 10003 Clarity 32688
+                lineItemList.get(rIndex).prodSpecQuality = '';
+                //Wonder CRM Request 10003 Clarity 32688
+
+                if(isMetro) {
+                    lineItemList.get(rIndex).metroOptions.clear();
+                    lineItemList.get(rIndex).metro = null;
+                    lineItemList.get(rIndex).distributorMetroPrice = null;
+                    lineItemList.get(rIndex).contractorMetroPrice = null;
+                }
+                lineItemList.get(rIndex).productId = '';
+                lineItemList.get(rIndex).avgSalesPrice = null;
+                lineItemList.get(rIndex).caseProd.UOM__c = '';
+                lineItemList.get(rIndex).userUOMVal = '';
+                lineItemList.get(rIndex).oli.UOM__c = '';
+                return;
+            }
+            if(subCategory != null && subCategory != '') {
+                if(!isOptyProduct) qCondi += ' AND Sub_Category__c =\'' + subCategory + '\'';
+                else qCondi += ' AND Product2.Sub_Category__c =\'' + subCategory + '\'';
+            }
+            if(family != null && family != '') {
+                if(!isOptyProduct) qCondi += ' AND Family__c =\'' + family + '\'';
+                else qCondi += ' AND Product2.Family__c =\'' + family + '\'';
+            } else {
+                if(source != null && source != '' && source == 'Family' && !isDMSRecordType && !isLitSampleRecordType) {
+                    qCondi += ' AND Product2.Family__c = null';
+                }
+            }
+            if(line != null && line != '') {
+                if(!isOptyProduct) qCondi += ' AND Line__c =\'' + line + '\'';
+                else qCondi += ' AND Product2.Line__c =\'' + line + '\'';
+            } else {
+                if(source != null && source != '' && source == 'Line' && !isDMSRecordType && !isLitSampleRecordType) {
+                    qCondi += ' AND Product2.Line__c = null';
+                }
+            }
+            if(item != null && item != '') {
+                if(!isOptyProduct) qCondi += ' AND Item__c =\'' + item + '\'';
+                else qCondi += ' AND Product2.Item__c =\'' + item + '\'';
+            } else {
+                if(source != null && source != '' && source == 'Item' && !isDMSRecordType && !isLitSampleRecordType) {
+                    qCondi += ' AND Product2.Item__c = null';
+                }
+            }
+            if(qCondi != null && qCondi != '') {
+                String additionalfilterCondition  = setAdditionalFilterCriteria();
+                if(isOptyProduct) {
+                    System.debug('fetchProductCode: ' + 'Select Id, Product2Id, Product2.ProductCode, Product2.Standard_Price__c, UnitPrice From PricebookEntry Where IsActive = true' + qCondi + ' AND Product2.IsActive = true ' + additionalfilterCondition + ' ORDER BY Product2.ProductCode limit 1');
+                    List<PricebookEntry> pbeList = Database.query('Select Id, Product2Id, Product2.ProductCode, Product2.Standard_Price__c, Product2.Unit_of_Measure__c, UnitPrice From PricebookEntry Where IsActive = true' + qCondi + ' AND Product2.IsActive = true ' + additionalfilterCondition + ' ORDER BY Product2.ProductCode limit 1');
+                    if(pbeList != null && pbeList.size() > 0) {
+                        //Integer rIndex = integer.valueOf(rowIndex);
+                        PricebookEntry pbe = pbeList.get(0);
+                        lineItemList.get(rIndex).pCode = pbe.Product2.ProductCode;
+                        String prodId = pbeList.get(0).Product2Id;
+                        lineItemList.get(rIndex).productId = prodId;
+                        lineItemList.get(rIndex).avgSalesPrice = pbe.Product2.Standard_Price__c;
+                        lineItemList.get(rIndex).oli.UOM__c = pbe.Product2.Unit_of_Measure__c;
+                        lineItemList.get(rIndex).userUOMVal = fetchUOMToDisplay(pbe.Product2.Unit_of_Measure__c);
+                    } else {
+                        //Integer rIndex = integer.valueOf(rowIndex);
+                        lineItemList.get(rIndex).pCode = '';
+                        lineItemList.get(rIndex).productId = '';
+                        lineItemList.get(rIndex).oli.UOM__c = '';
+                        lineItemList.get(rIndex).avgSalesPrice = null;
+                    }
+                } else {
+                    if(isCaseEntry) {
+                        qCondi = ' Where ' + qCondi.subString(5);
+                    } else {
+                        qCondi = ' Where IsActive = true ' + qCondi;
+                    }
+                    
+                    Boolean removeProdCode = false;
+                    System.debug('fetchProductCode: ' + 'Select Id, ProductCode From Product2 ' + qCondi + additionalfilterCondition + ' ORDER BY ProductCode limit 1');
+                    List<Product2> product2List = Database.query('Select Id, ProductCode, Unit_of_Measure__c, Standard_Price__c, ParentPriceGroup__c, ParentPriceGroup__r.Name From Product2 ' + qCondi + additionalfilterCondition + ' ORDER BY ProductCode limit 1');
+                    if(product2List != null && product2List.size() > 0) {
+                        //Integer rIndex = integer.valueOf(rowIndex);
+                        Product2 p2 = product2List.get(0);
+                        if(isPriceException) {
+                            lineItemList.get(rIndex).pCode = p2.ParentPriceGroup__r.Name;
+                            //if(p2.ParentPriceGroup__r.Name != null) lineItemList.get(rIndex).productId = p2.Id;
+                            lineItemList.get(rIndex).productId = p2.Id;
+                        }
+                        else {
+                            lineItemList.get(rIndex).pCode = p2.ProductCode;
+                            lineItemList.get(rIndex).productId = p2.Id;
+                            lineItemList.get(rIndex).caseProd.UOM__c = fetchRowUOMToDisplay( p2.Unit_of_Measure__c);
+                            lineItemList.get(rIndex).userUOMVal = fetchUOMToDisplay(p2.Unit_of_Measure__c);
+                        }
+                        lineItemList.get(rIndex).avgSalesPrice = p2.Standard_Price__c;
+                        if(isMetro) {
+                            System.currentPageReference().getParameters().put('rIndex', rowIndex);
+                            System.debug('ProductId Value::: '+p2.Id);
+                            fetchUserMetros(p2.Id);
+                        }
+                    } else {
+                        removeProdCode = true;
+                    }
+                    if(isDMSRecordType) {
+                        if(lItem.prodItem == null || lItem.prodItem == '') removeProdCode = true;
+                    }
+                    if(isLitSampleRecordType) {
+                        if(lItem.prodLine == null || lItem.prodLine == '') removeProdCode = true;
+                    }
+                    if(removeProdCode) {
+                        //Integer rIndex = integer.valueOf(rowIndex);
+                        lineItemList.get(rIndex).pCode = '';
+                        lineItemList.get(rIndex).productId = '';
+                        lineItemList.get(rIndex).avgSalesPrice = null;
+                        if(isMetro) {
+                            lineItemList.get(rIndex).metroOptions.clear();
+                            lineItemList.get(rIndex).metro = null;
+                            lineItemList.get(rIndex).distributorMetroPrice = null;
+                            lineItemList.get(rIndex).contractorMetroPrice = null;
+                        }
+                    }
+                }
+            } else {
+                //Integer rIndex = integer.valueOf(rowIndex);
+                lineItemList.get(rIndex).pCode = '';
+                lineItemList.get(rIndex).productId = '';
+                lineItemList.get(rIndex).avgSalesPrice = null;
+                if(isMetro) {
+                    lineItemList.get(rIndex).metroOptions.clear();
+                    lineItemList.get(rIndex).metro = null;
+                    lineItemList.get(rIndex).distributorMetroPrice = null;
+                    lineItemList.get(rIndex).contractorMetroPrice = null;
+                }
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    private void fetchUserMetros(String productId) {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            System.debug('rowIndex:'+rowIndex);
+            Integer rIndex = integer.valueOf(rowIndex);
+            lineItemList.get(rIndex).metro = '';
+            lineItemList.get(rIndex).distributorMetroPrice = null;
+            lineItemList.get(rIndex).contractorMetroPrice = null;
+            lineItemList.get(rIndex).metroOptions.clear();
+            Set<Id> metroIds = new Set<Id>();
+            for(MetroPricebook__c mp : [Select m.Status__c, m.Price_Group__c, m.Metro__c, m.Id From MetroPricebook__c m 
+                                            Where Price_Group__c =: productId and Status__c = 'Active']) {
+                metroIds.add(mp.Metro__c);
+            }
+            System.debug('productId::: '+productId);
+            System.debug('Metro Ids:::'+metroIds);            
+            metroList = [Select Id, Metro__r.Name, Metro__c From UserMetro__c Where Metro__r.Status__c='Active' 
+                            and Metro__c IN: metroIds and User__c =: Userinfo.getUserId() order by Metro__r.Name];
+            String p_Metro = '';
+            Integer i = 0;
+            lineItemList.get(rIndex).metroOptions.add(new Selectoption('', System.Label.Products_None_Picklist_Constructor));
+            if(metroList.size() > 0) {
+                lineItemList.get(rIndex).metroOptions.clear();
+                lineItemList.get(rIndex).metroOptions.add(new Selectoption('', System.Label.Products_SelectMetro_fetchUserMetros_PickList));
+                for(UserMetro__c um : metroList) {
+                    lineItemList.get(rIndex).metroOptions.add(new Selectoption(um.Metro__c, um.Metro__r.Name));
+                    if(i == 0) {
+                        p_Metro = um.Metro__c;
+                        i++;
+                    }
+                }
+            }
+            if(lineItemList.get(rIndex).metroOptions.size() == 2) {
+                System.currentPageReference().getParameters().put('rIndex', rowIndex);
+                lineItemList.get(rIndex).metro = p_Metro;
+                fetchMetroPrice();
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    //Purpose: fetch the metro price for the select metro
+    public void fetchMetroPrice() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            System.debug('rowIndex:'+rowIndex);
+            Integer rIndex = integer.valueOf(rowIndex);
+            LineItem lItem = lineItemList.get(rIndex);
+            System.debug('lItem.metro:'+lItem.metro);
+            if(lItem.metro != null && lItem.metro != '') {
+                lineItemList.get(rIndex).distributorMetroPrice = 0;
+                lineItemList.get(rIndex).contractorMetroPrice = 0;
+                List<MetroPricebook__c> metroPricebookList = [Select Id, ListPrice__c, AccountType__c From MetroPricebook__c 
+                                                                Where Metro__c =: lItem.metro and Status__c = 'Active' 
+                                                                and ListPrice__c != null and (AccountType__c = 'Distributor' or AccountType__c = 'Subcontractor') limit 2];
+                if(metroPricebookList.size() > 0) {
+                    for(MetroPricebook__c mp : metroPricebookList) {
+                        if(mp.AccountType__c == 'Distributor') lineItemList.get(rIndex).distributorMetroPrice = mp.ListPrice__c;
+                        if(mp.AccountType__c == 'Subcontractor') lineItemList.get(rIndex).contractorMetroPrice = mp.ListPrice__c;
+                    }
+                    
+                }
+            } else {
+                lineItemList.get(rIndex).distributorMetroPrice = null;
+                lineItemList.get(rIndex).contractorMetroPrice = null;
+            }
+        } catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+    
+    //method to check user is filter via commercial or residential
+    private String commercial_Residential_Check() {
+        String temp = '';
+        if(isCommercial && !isResidential) {
+            temp = ' and Product2.Commercial__c = true';
+        } else if(isResidential && !isCommercial) {
+            temp = ' and Product2.Residential__c = true';
+        } else if(isCommercial && isResidential) {
+            temp = ' and (Product2.Commercial__c = true or Product2.Residential__c = true)';
+        }
+        return temp;
+    }
+    
+    //method to invoke when user selects all the filter criteria and click search
+    //fetch all the product matching to the filter criteria
+    public void searchKeyword() {
+        try {
+            pNameList = new Set<String>();
+            lineItemList.clear();
+            String condition = '';
+            isQueryLimitChecked = false;
+            if(isOptyProduct) {
+                if(priceBookSelected == null || priceBookSelected == '') {
+                    ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_SelectPriceBook_SearchKeyword_PickList);
+                    ApexPages.addMessage(msg);
+                    return;
+                }
+            }
+            showPiclist = true;
+            showLine = true;
+            if(displaySystemRecordTypeId == recordTypeSelected) {
+                isDMSRecordType = true;
+                isLitSampleRecordType = false;
+                //isCompetitorRecordType = false;
+                showPiclist = false;
+                showLine = false;
+            }  else if(literatureSampleRTId == recordTypeSelected) {
+                isLitSampleRecordType = true;
+                isDMSRecordType = false;
+                //isCompetitorRecordType = false;
+                showPiclist = false;
+            } else {
+                isDMSRecordType = false;
+                isLitSampleRecordType = false;
+                //isCompetitorRecordType = false;
+            }
+            condition = setFilterCriteria();
+            filterCondition = condition;
+            validateQuery();
+            //addRow();
+        } catch(Exception ex) { ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage())); }
+    }
+    
+    private String setAdditionalFilterCriteria() {
+        String queryCondition = '';
+        if(!isMetro && !isPriceException && !isPartnerJob && showCommRes) queryCondition += commercial_Residential_Check();
+        if(categorySelected != null && categorySelected != '') {
+            queryCondition += ' and Product2.Category__c = \'' + categorySelected + '\'';
+        }
+        if(isOptyProduct && priceBookSelected != null && priceBookSelected != '') {
+            queryCondition += ' and Pricebook2Id = \'' + priceBookSelected + '\'';
+        }
+        if((!isMetro && !isPriceException) && recordTypeSelected != null && recordTypeSelected != '') {
+            queryCondition += ' and Product2.RecordTypeId = \'' + recordTypeSelected + '\'';
+        }
+        if(businessUnitSelected != null && businessUnitSelected != '') {
+            queryCondition += ' and Product2.Business_Unit__c = \'' + businessUnitSelected + '\'';
+        }
+        if(productCountry != null && productCountry != '') {
+            queryCondition += ' and Product2.Country__c = \'' + productCountry + '\'';
+        }
+        if(isOptyProduct && optyCurrencyCode != null && optyCurrencyCode != '' && (isPartnerJob && userRec.ProfileId != null && userRec.Profile.Name != null && !userRec.Profile.Name.contains('ABP'))) {
+            queryCondition += ' and CurrencyIsoCode = \'' + optyCurrencyCode + '\'';
+        }
+        /*if(isPriceException && priceGroupSelected != null && priceGroupSelected != '') {
+            queryCondition += ' and Product2.ParentPriceGroup__c = \'' + priceGroupSelected + '\'';
+        }*/
+        return queryCondition;
+    }
+    
+    
+    //method prepares the filter criteria entered by user
+    private String setFilterCriteria() {
+        String queryCondition = '';
+        if(isOptyProduct) {
+            if(keyword != null && keyword != '') {
+                queryCondition = ' and (Product2.Sub_category__c like \'%' + keyword + '%\' or Product2.Family__c like \'%' + keyword + '%\' or Product2.Line__c like \'%' + keyword + '%\' or Product2.Item__c like \'%' + keyword + '%\')';
+            }
+            queryCondition += setAdditionalFilterCriteria();
+        } else {
+            if(keyword != null && keyword != '') {
+                if(isDMSRecordType) {
+                    queryCondition = ' and (Item__c like \'%' + keyword + '%\')';
+                } else if(isLitSampleRecordType) {
+                    queryCondition = ' and (Line__c like \'%' + keyword + '%\' or Item__c like \'%' + keyword + '%\')'; 
+                } else {
+                    queryCondition = ' and (Sub_category__c like \'%' + keyword + '%\' or Family__c like \'%' + keyword + '%\' or Line__c like \'%' + keyword + '%\' or Item__c like \'%' + keyword + '%\')';
+                }
+            }
+            queryCondition += setAdditionalFilterCriteria();
+        }
+        return queryCondition;
+    }
+    
+    //this reset the screen to initial stage
+    public void reset() {
+        keyword = '';
+        init();
+    }
+    
+    //added the product to the opportunity/case
+    public Pagereference submit() {
+        Savepoint sp = Database.setSavepoint();
+        Double recQuantity;
+        try {
+            hasErrorOnSubmit = 'no';
+            List<OpportunityLineItem> oliInsertList = new List<OpportunityLineItem>();
+            List<Case_Product__c> caseProdInsertList = new List<Case_Product__c>();
+            List<Display_Merchandising_System__c> dsInsertList = new List<Display_Merchandising_System__c>();
+            List<Literature_Sample_Requests__c> lsInsertList = new List<Literature_Sample_Requests__c>();
+            List<PriceException__c> specProductInsertList = new List<PriceException__c>();
+            List<JobProduct__c> jobProductInsertList = new List<JobProduct__c>();
+            Set<String> pIds = new Set<String>();
+            if(lineItemList != null && lineItemList.size() == 0) {
+                ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_SubmitCannotBeComplete);
+                ApexPages.addMessage(msg);
+                hasErrorOnSubmit = 'yes';
+                return null;
+            }
+            Boolean subCatetorySelected = false;
+            for(LineItem l : lineItemList) {
+                if(l.prodSubCategory != null && l.prodSubCategory != '') subCatetorySelected = true;
+                if(l.productId != null && l.productId != '') pIds.add(l.productId);
+            }
+            if(!subCatetorySelected) {
+                ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_SubProductNotSelected);
+                ApexPages.addMessage(msg);
+                hasErrorOnSubmit = 'yes';
+                return null;
+            }
+            Map<Id, String> pbeMap = new Map<Id, String>();
+            Map<Id, Product2> productMap = new Map<Id, Product2>();
+            Map<Id, String> productNameMap = new Map<Id, String>();
+            Map<Id, String> productItemMap = new Map<Id, String>();
+            Map<Id, String> productUomMap = new Map<Id, String>();
+            Boolean isAllPartnerProducts = true;    //indicate if the products processing are all of Partner Products record type
+            if(isOptyProduct) {
+                List<PricebookEntry> pbeList;
+                if(priceBookSelected != null && priceBookSelected != '') {
+                    pbeList = [Select Id, Product2Id, Product2.Name, Product2.Item__c, Product2.Unit_of_Measure__c From PricebookEntry Where Product2Id IN :pIds and Pricebook2Id = :priceBookSelected and IsActive = true and CurrencyIsoCode =: optyCurrencyCode];
+                } else {
+                    pbeList = [Select Id, Product2Id, Product2.Name, Product2.Item__c, Product2.Unit_of_Measure__c From PricebookEntry Where Product2Id IN :pIds and IsActive = true and CurrencyIsoCode =: optyCurrencyCode];
+                }
+                for(PricebookEntry p : pbeList) {
+                    pbeMap.put(p.Product2Id, p.Id);
+                    productNameMap.put(p.Product2Id, p.Product2.Name);
+                    productItemMap.put(p.Id, p.Product2.Item__c);
+                    ProductUomMap.put(p.Product2Id, p.Product2.Unit_of_Measure__c);
+                }
+            } else {
+                List<Product2> prod2List = Database.query('Select Id, Name, Item__c, RecordTypeId, Unit_of_Measure__c From Product2 Where Id IN :pIds' +  ((isCaseEntry) ? '' : ' and IsActive = true'));
+                for(Product2 p : prod2List) {
+                    productNameMap.put(p.Id, p.Name);
+                    productItemMap.put(p.Id, p.Item__c);
+                    productUomMap.put(p.id, p.Unit_of_Measure__c);
+                    System.debug('objectname::::::::::'+ productUomMap );
+                    if(isPartnerJob && isAllPartnerProducts && p.RecordTypeId != partnerProductRecordTypeId) isAllPartnerProducts = false;
+                }
+                if(isPartnerJob) productMap = new Map<Id, Product2>(prod2List);
+            }
+            System.debug('objectname123::::::::::'+ productUomMap);
+            Boolean requiredFieldMissing = false;
+            for(LineItem l : lineItemList) {
+                System.debug('l: ' + l);
+                if(isOptyProduct) {
+                    OpportunityLineItem oli = l.oli;
+                    System.debug('within if');
+                    if(recId != null && recId != '') oli.OpportunityId = recId;
+                    System.debug('within if productId ' + l.productId);
+                    if(l.productId != null && l.productId != '' && pbeMap.get(l.productId) != null) oli.PricebookEntryId = pbeMap.get(l.productId);
+                    else continue;
+                    if(l.unitPrice == null || l.unitPrice == 0) {
+                        if(l.avgSalesPrice != null) {
+                            l.unitPrice = l.avgSalesPrice;
+                        }
+                    }
+                    if(l.unitPrice == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_SellingPriceNotNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    if(l.quantity == null || l.quantity == 0) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_QuantityNotNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    oli.UnitPrice = l.unitPrice;
+                    oli.UOM__c = productUomMap.get(l.productId);
+                    //Wonder 10003
+                    oli.Spec_Quality__c = l.prodSpecQuality;
+                    //Wonder 10003
+                    //System.debug('RecId::'+recId);
+                    oli.Quantity = returnQuantityInUserUOM(oli.UOM__c, l.quantity);
+                    System.debug('add oli');
+                    oliInsertList.add(oli);
+                } else if(isCaseEntry) {
+                    Case_Product__c cProd = new Case_Product__c();
+                    if(recId != null && recId != '') cProd.Case_Products__c = recId;
+                    if(l.productId != null && l.productId != '') cProd.Product__c = l.productId;
+                    if(productNameMap.get(l.productId) != null) cProd.Name = productNameMap.get(l.productId);
+                    String prodUOM = productUomMap.get(l.productId);
+                    cProd.UOM__c = l.caseProd.UOM__c;
+                    if(l.userUOMVal != cProd.UOM__c) {
+                        cProd.Quantity_Installed__c = l.caseProd.Quantity_Installed__c;
+                        cProd.Quantity__c = l.caseProd.Quantity_Installed__c;
+                    } else {
+                        cProd.Quantity_Installed__c = returnQuantityInUserUOM(l.caseProd.UOM__c, l.caseProd.Quantity_Installed__c);
+                        cProd.Quantity__c = returnQuantityInUserUOM(l.caseProd.UOM__c, l.caseProd.Quantity_Installed__c);
+                    }
+                    System.debug('ProductUomMap'+productUomMap);
+                    caseProdInsertList.add(cProd);
+                } else if(isDisplaySystem) {
+                    Display_Merchandising_System__c dsys = new Display_Merchandising_System__c();
+                    if(recId != null && recId != '') dsys.Account__c = recId;
+                    if(l.productId != null && l.productId != '') dsys.Product__c = l.productId;
+                    System.debug('productItemMap log: ' + productItemMap);
+                    if(productItemMap.get(l.productId) != null) dsys.Name = productItemMap.get(l.productId);
+                    if(l.quantity == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_QuantityNotNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    if(l.oli.ServiceDate == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_DateCanNotBeBlank);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                  
+                    //Wonder 10066 
+                    if(l.displayMerch.Date_Installed__c == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ProductSearch_ErrorMsg_DateCannotBeNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    
+                    dsys.Date_Installed__c = l.displayMerch.Date_Installed__c;
+                    //Wonder 10066 
+
+                    dsys.Add_Date__c = l.oli.ServiceDate;
+                    dsys.Quantity__c = l.quantity;
+                    dsInsertList.add(dsys);
+                } else if(isLiteratureSystem) {
+                    Literature_Sample_Requests__c ls = new Literature_Sample_Requests__c();
+                    if(l.quantity == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_QuantityNotNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    if(isCaseLS) {
+                        if(recId != null && recId != '') ls.Literature_Sample_Request__c = recId;
+                        ls.Account__c = caseLSR.AccountId;
+                        ls.Contact__c = caseLSR.ContactId;
+                        
+                    } else {
+                        if(recId != null && recId != '') ls.Account__c = recId;
+                    }
+                    if(l.productId != null && l.productId != '') ls.Products__c = l.productId;
+                    if(productItemMap.get(l.productId) != null) {
+                        String lsName = productItemMap.get(l.productId);
+                        if(lsName != null && lsName.length() > 80) lsName = lsName.subString(0,80);
+                        ls.Name = lsName;
+                        
+                    }
+                    ls.Quantity__c = l.quantity;
+                    lsInsertList.add(ls);
+                } else if(isPriceException) {
+                    //l.productId;
+                } else if(isPartnerJob) {
+                    if(l.quantity == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_QuantityNotNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    /*if(l.unitPrice == null || l.unitPrice == 0) {
+                        if(l.avgSalesPrice != null) {
+                            l.unitPrice = l.avgSalesPrice;
+                        }
+                    }*/
+                    if(userRec.ProfileId != null && userRec.Profile.Name != null && !userRec.Profile.Name.contains('ABP') && l.unitPrice == null) {
+                        requiredFieldMissing = true;
+                        ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, System.Label.Products_ErrorMessage_Submit_SellingPriceNotNull);
+                        ApexPages.addMessage(msg);
+                        break;
+                    }
+                    JobProduct__c jp = new JobProduct__c();
+                    if(productNameMap.get(l.productId) != null) jp.Name = productNameMap.get(l.productId);
+                    jp.PartnerJob__c = recId;
+                    jp.Product__c = l.productId;
+                    if(userRec.ProfileId != null && userRec.Profile.Name != null && !userRec.Profile.Name.contains('ABP')) jp.Amount__c = l.unitPrice;
+                    jp.Quantity__c = l.quantity;
+                    jobProductInsertList.add(jp);
+                }
+            }
+            if(requiredFieldMissing) { hasErrorOnSubmit = 'yes'; return null; }
+            try {
+                if(isOptyProduct) {
+                    if(oliInsertList.size() > 0) {
+                        insert oliInsertList;
+                        if(!priceBookIdAdded) update opportunity;
+                    }
+                } else if(isCaseEntry) {
+                    if(caseProdInsertList.size() > 0) insert caseProdInsertList;
+                } else if(isDisplaySystem) {
+                    if(dsInsertList.size() > 0) insert dsInsertList;
+                } else if(isLiteratureSystem) {
+                    if(lsInsertList.size() > 0) insert lsInsertList;
+                } else if(isPriceException) {
+                    //if(preferredProductInsertList.size() > 0) insert preferredProductInsertList;
+                } else if(isPartnerJob) {
+                    if(jobProductInsertList.size() > 0) {
+                        insert jobProductInsertList;
+                        if(!isAllPartnerProducts && partnerJobOpportunityId != null && partnerJobOpportunityId != '') syncProductsWithOpportunity(jobProductInsertList, productMap, pIds);
+                    }
+                }
+            } catch(Exception ex) {
+                ApexPages.Message msg = new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage());
+                ApexPages.addMessage(msg);
+                Database.rollback(sp);
+                hasErrorOnSubmit = 'yes';
+                return null;
+            }
+            if(isSubmitAndMore) {
+                isSubmitAndMore = false;
+                lineItemList.clear();
+                hasErrorOnSubmit = 'yes';
+                return null;
+            }
+            if(isCaseEntry) {
+                String isFromCaseEntry = Apexpages.currentPage().getParameters().get('page');
+                if(isFromCaseEntry != null && isFromCaseEntry == 'CaseEntry') {
+                    List<Case> caseList = [Select Id, Status, RecordTypeId From Case Where Id =: recId Limit 1];
+                    if(caseList != null && caseList.size() > 0) {
+                        if(caseList[0].Status != null && caseList[0].Status.contains('Closed')) {
+                            return new PageReference('/apex/CaseSearch?RecordType=' + caseList[0].RecordTypeId + '&retURL=500/o&save_new=1&sfdc.override=1&ent=Case');
+                        }
+                    }
+                }
+            }
+            System.debug('recId: '+recId);
+            //Mohan: 2014/04/24
+            //to control the redirection to Case page in console window.
+            if(isConsoleView && isCaseEntry) {
+                //return new PageReference('/' + recId + '?isdtp=vw');
+                return null;
+            }
+            return new PageReference('/' + recId);
+        } catch(Exception ex) {
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            Database.rollback(sp);
+            hasErrorOnSubmit = 'yes';
+            return null;
+        }
+    }
+    
+    public void submitAndMore() {
+        isSubmitAndMore = true;
+        submit();
+    }
+    
+    //method to redirect to the view page to which the product were requested
+    public Pagereference cancel() {
+        System.debug('recId: '+recId);
+        //Mohan: 2014/04/24
+        //to control the redirection to Case page in console window.
+        if(isConsoleView && isCaseEntry) {
+            //return new PageReference('/' + recId + '?isdtp=vw');
+            return null;
+        }
+        return new PageReference('/' + recId);
+    }
+    
+    //sync product with Opportunity if the select product is not a type of Partner Products
+    private void syncProductsWithOpportunity(List<JobProduct__c> jobProductInsertList, Map<Id, Product2> productMap, Set<String> pIds) {
+        if(userRec.ProfileId != null && userRec.Profile.Name != null && !userRec.Profile.Name.contains('ABP') && (Userinfo.getUserType() != 'PowerPartner' && userRec.Profile.Name.contains('AFP'))) {
+            //prepare existing opportunity line items map
+            List<OpportunityLineItem> oliList = [Select Id, UnitPrice, Quantity, PricebookEntry.Product2Id 
+                                                    From OpportunityLineItem Where OpportunityId =: partnerJobOpportunityId];
+            Map<String, List<OpportunityLineItem>> oliMap = new Map<String, List<OpportunityLineItem>>();
+            for(OpportunityLineItem olItem : oliList) {
+                List<OpportunityLineItem> temp = oliMap.get(olItem.PricebookEntry.Product2Id);
+                if(temp == null) temp = new List<OpportunityLineItem>();
+                temp.add(olItem);
+                oliMap.put(olItem.PricebookEntry.Product2Id, temp);
+            }
+            List<OpportunityLineItem> upsertList = new List<OpportunityLineItem>();
+            Map<Id, String> pbeMap = new Map<Id, String>();
+            List<PricebookEntry> pbeList;
+            if(priceBookSelected != null && priceBookSelected != '') {
+                pbeList = [Select Id, Product2Id, Product2.Name, Product2.Item__c From PricebookEntry Where Product2Id IN :pIds and Pricebook2Id = :priceBookSelected and IsActive = true and CurrencyIsoCode =: optyCurrencyCode];
+            } else {
+                pbeList = [Select Id, Product2Id, Product2.Name, Product2.Item__c From PricebookEntry Where Product2Id IN :pIds and IsActive = true and CurrencyIsoCode =: optyCurrencyCode];
+            }
+            for(PricebookEntry p : pbeList) {
+                pbeMap.put(p.Product2Id, p.Id);
+            }
+            for(JobProduct__c jp : jobProductInsertList) {
+                if(productMap.get(jp.Product__c) != null && productMap.get(jp.Product__c).RecordTypeId != partnerProductRecordTypeId) {
+                    List<OpportunityLineItem> temp = oliMap.get(jp.Product__c);
+                    if(temp != null) {
+                        for(OpportunityLineItem t : temp) {
+                            t.UnitPrice = jp.Amount__c;
+                            t.Quantity = jp.Quantity__c;
+                            upsertList.add(t);
+                        }
+                    } else {
+                        OpportunityLineItem t = new OpportunityLineItem();
+                        t.PricebookEntryId = pbeMap.get(jp.Product__c);
+                        t.OpportunityId = partnerJobOpportunityId;
+                        t.UnitPrice = jp.Amount__c;
+                        t.Quantity = jp.Quantity__c;
+                        upsertList.add(t);
+                    }
+                }
+            }
+            if(upsertList.size() > 0) upsert upsertList;
+        } else {
+            //prepare existing price exceptiong map
+            //Mohan 2014-02-04: perform only of current user is not Partner User
+            /*if(userRec.UserType == 'Standard') {
+                List<PriceException__c> peList = [Select Id, Opportunity__c, Price__c, Quantity__c, Product__c 
+                                                        From PriceException__c Where Opportunity__c =: partnerJobOpportunityId and Product__c != null];
+                Map<String, List<PriceException__c>> peMap = new Map<String, List<PriceException__c>>();
+                for(PriceException__c pe : peList) {
+                    List<PriceException__c> temp = peMap.get(pe.Product__c);
+                    if(temp == null) temp = new List<PriceException__c>();
+                    temp.add(pe);
+                    peMap.put(pe.Product__c, temp);
+                }
+                List<PriceException__c> upsertList = new List<PriceException__c>();
+                for(JobProduct__c jp : jobProductInsertList) {
+                    if(productMap.get(jp.Product__c) != null && productMap.get(jp.Product__c).RecordTypeId != partnerProductRecordTypeId) {
+                        List<PriceException__c> temp = peMap.get(jp.Product__c);
+                        if(temp != null) {
+                            for(PriceException__c t : temp) {
+                                t.Quantity__c = jp.Quantity__c;
+                                upsertList.add(t);
+                            }
+                        } else {
+                            PriceException__c t = new PriceException__c();
+                            t.Opportunity__c = partnerJobOpportunityId;
+                            t.Product__c = jp.Product__c;
+                            t.Quantity__c = jp.Quantity__c;
+                            upsertList.add(t);
+                        }
+                    }
+                }
+                if(upsertList.size() > 0) upsert upsertList;
+            }*/
+        }
+    }
+    
+    //removing the row from the product list
+    public void deleteRow() {
+        try {
+            String rowIndex = System.currentPageReference().getParameters().get('rIndex');
+            System.debug('rowIndex:'+rowIndex);
+            if(rowIndex != null && rowIndex != '') {
+                Integer delRow = integer.valueOf(rowIndex);
+                List<LineItem> temp = new List<LineItem>();
+                //temp = lineItemList;
+                //temp.remove(integer.valueOf(rowIndex));
+                //lineItemList = temp;
+                for(LineItem l : lineItemList) {
+                    if(l.rowIndex == delRow) continue;
+                    else {
+                        l.rowIndex = temp.size();
+                        temp.add(l);
+                    }
+                }
+                lineItemList = temp;
+            }
+        } catch(Exception ex) { ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage())); }
+    }
+    
+    //parsing the apostrophe symbole for Product level values
+    private String formatHierarchyValue(String val, Map<String, String> mapValue) {
+        if(mapValue != null && mapValue.size() > 0) {
+            if(mapValue.containsKey(val)) {
+                val = mapValue.get(val);
+            }
+        }
+        if(val != null && val != '') {
+            if(val.contains('\'')) {
+                List<String> tempList = val.split('\'');
+                String temp = '';
+                for(Integer i=0; i<tempList.size(); i++) {
+                    if(i == 0) {
+                        temp = tempList[i];
+                    } else {
+                        temp += '\\\'' + tempList[i];
+                    }
+                }
+                System.debug('temp: ' + temp);
+                val = temp;
+            }
+        }
+        return val;
+    }
+    
+    private String formatText(String val) {
+        if(val != null && val != '') {
+            val = val.replaceAll('  ', ' ');
+        }
+        return val;
+    }
+    
+    private String formatRecId(String s) {
+        //System.debug('s val: '+s);
+        if(s != null && s.length() > 15) {
+            s = s.subString(0, 15);
+        }
+        return s;
+    }
+    
+    //UOM quantity caluclation
+    public Integer returnQuantityInUserUOM(String recUOM, Decimal recQuantity) {
+        if(recQuantity == null) return null;
+        Integer str = 0;
+        String uomType = 'Metric';
+        String userUOMVal = '';
+        Decimal i = 0.0;
+        Integer newValInput = 0;
+        System.debug('RecUom::'+recUOM);
+        System.debug('recQuantity::'+recQuantity);
+        if(recUOM == 'FT2' || recUOM == 'YD2' || recUOM == 'LFT') {
+            uomType = 'Imperial';
+        }
+        // if User UOM NOT equal to Opp UOM
+        
+        if(u.UOM__c != uomType) {
+            if(u.UOM__c == 'Imperial') {
+                if(recUOM == 'LM') userUOMVal = 'LFT';
+                else userUOMVal = 'FT2';
+                if(userUOMVal == 'LFT' && recUOM == 'LM') i = recQuantity * 0.30480;
+                else if(userUOMVal == 'FT2' && recUOM == 'M2') i = recQuantity * 0.092903;
+                else i = recQuantity;
+            } else {
+                if(recUOM == 'LFT') userUOMVal = 'LM';
+                else userUOMVal = 'M2';
+                if(userUOMVal == 'LM' && recUOM == 'LFT') i = recQuantity * 3.28084;
+                else if(userUOMVal == 'M2' && recUOM == 'FT2') i = recQuantity * 10.7639;
+                else if(userUOMVal == 'M2' && recUOM == 'YD2') i = recQuantity * 1.19599;
+                else i = recQuantity;
+            }
+            str = Math.round(i);
+            newValInput = Math.round(i);
+        } else {
+            str = integer.valueOf(recQuantity);
+            userUOMVal = recUOM;
+            newValInput = str;
+        }
+        System.debug('Object'+str);
+        return str;
+    }
+    
+    //UOM display
+    public String fetchUOMToDisplay(String recUOM) {
+        String uomTypeToDisplay = 'Metric';
+        System.debug('RecUom::'+recUOM);
+        if(recUOM == 'FT2' || recUOM == 'YD2' || recUOM == 'LFT') {
+            uomTypeToDisplay = 'Imperial';
+        }
+        String userUOMToReturn = '';
+        // if User UOM NOT equal to Opp UOM
+        
+        if(u.UOM__c != uomTypeToDisplay) {
+            if(u.UOM__c == 'Imperial') {
+                if(recUOM == 'LM') userUOMToReturn = 'LFT';
+                else userUOMToReturn = 'FT2';
+            } else {
+                if(recUOM == 'LFT') userUOMToReturn = 'LM';
+                else userUOMToReturn = 'M2';
+            }
+        } else {
+            userUOMToReturn = recUOM;
+        }
+        if(userUOMToReturn == '') userUOMToReturn = recUOM;
+        System.debug('userUOMToReturn'+userUOMToReturn);
+        return userUOMToReturn;
+    }
+    
+    //UOM display
+    public String fetchRowUOMToDisplay(String recUOM) {
+         
+        string retURM = recUOM;
+        if(u.UOM__c == 'Imperial' ){
+            if(recUOM == 'M2' ){
+                retURM = 'FT2';
+            }
+            else if(recUOM == 'LM' ){
+                retURM = 'LFT';
+            } 
+        }
+        else if(u.UOM__c == 'Metric' ){
+            if(recUOM == 'LFT' ){
+                retURM = 'LM';
+            }
+            else if(recUOM == 'YD2' || recUOM == 'FT2' ){
+                retURM = 'M2';
+            }  
+        }
+        return retURM;
+    }
+    
+    //wrapper class for line item
+    public class LineItem {
+        public OpportunityLineItem oli {get;set;}
+        public String prodName {get;set;}
+        public List<Selectoption> prodOptions {get;set;}
+        public String prodSubCategory {get;set;}
+        public List<Selectoption> subCategoryOptions {get;set;}
+        public Map<String, String> subCategoryMap {get;set;}
+        public String prodLine {get;set;}
+        public List<Selectoption> lineOptions {get;set;}
+        public Map<String, String> lineMap {get;set;}
+        public String prodFamily {get;set;}
+        public List<Selectoption> familyOptions {get;set;}
+        public Map<String, String> familyMap {get;set;}
+        public String prodItem {get;set;}
+        public List<Selectoption> itemOptions {get;set;}
+        public Map<Integer, List<Selectoption>> itemOptionsMap {get;set;}
+        public Map<String, String> itemMap {get;set;}
+        public String metro {get;set;}
+        public List<Selectoption> metroOptions {get;set;}
+        public Map<Integer, List<Selectoption>> metroOptionsMap {get;set;}
+    public String  userUOMVal {get;set;}
+        public Map<String, String> metroMap {get;set;}
+        public String pCode {get;set;}
+        public Integer rowIndex {get;set;}
+        public String productId {get;set;}
+        public Integer quantity {get;set;}
+        public Double unitPrice {get;set;}
+        public Double avgSalesPrice {get;set;}
+        public Double distributorMetroPrice {get;set;}
+        public Double contractorMetroPrice {get;set;}
+        public Case_Product__c caseProd {get;set;}
+        //Wonder CRM Request 10003 Clarity 32688
+        public String prodSpecQuality {get;set;}
+        public List<Selectoption> SpecQualityOptions {get;set;}
+        //Wonder CRM Request 10003 Clarity 32688
+        //Wonder CRM Request 10066 Clarity 32688
+        public Display_Merchandising_System__c displayMerch {get;set;}        
+        //Wonder CRM Request 10066 Clarity 32688   
+
+        
+        public LineItem() {
+            oli = new OpportunityLineItem();
+            caseProd = new Case_Product__c();
+            prodName = '';
+            productId = '';
+            userUOMVal = '';
+            prodOptions = new List<Selectoption>();
+            subCategoryOptions = new List<Selectoption>();
+            lineOptions = new List<Selectoption>();
+            familyOptions = new List<Selectoption>();
+            itemOptions = new List<Selectoption>();
+            metroOptions = new List<Selectoption>();
+            itemOptionsMap = new Map<Integer, List<Selectoption>>();
+            subCategoryMap = new Map<String, String>();
+            metroOptionsMap = new Map<Integer, List<Selectoption>>();
+            lineMap = new Map<String, String>();
+            familyMap = new Map<String, String>();
+            itemMap = new Map<String, String>();
+            metroMap = new Map<String, String>();
+            pCode = '';
+          //Wonder CRM Request 10003 & 10066 Clarity 32688             
+            displayMerch = new Display_Merchandising_System__c();
+            specQualityOptions = new List<Selectoption>();
+            //Wonder CRM Request 10003 & 10066 Clarity 32688
+
+        }
+    }
+    public void setKeyValue (String s) {
+        try{
+            System.debug('setKeyVal log1: ' +Apexpages.currentPage().getParameters().get('searchKeyValue'));
+            if(s != null ) {
+                keyValue = s.toUpperCase();
+                if(previousDoSearchValue != keyValue) {
+                    previousDoSearchValue = keyValue;
+                    doSearchProduct = false;
+                }
+            }
+            if(!doSearchProduct) { 
+                if(keyValue != null && keyValue != '') {
+                    keyword = keyValue;
+                    System.debug('setKeyValue-keyword: '+keyword);
+                    doSearchProduct = true; 
+                    init();
+                }
+            }
+        }
+        catch(Exception ex) { 
+            ApexPages.addMessage(new ApexPages.Message(ApexPages.Severity.ERROR, ex.getMessage()));
+            return;
+        }
+    }
+        
+    public String getKeyValue() {
+        return keyValue;
+    }
+}
